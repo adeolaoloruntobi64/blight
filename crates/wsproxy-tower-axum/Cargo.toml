@@ -1,0 +1,16 @@
+[package]
+name = "wsproxy-tower-axum"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false }
+bytes = "1.11.1"
+common = { path = "../common" }
+fastwebsockets = { version = "0.10.0", features = ["upgrade", "simdutf8", "unstable-split", "with_axum"] }
+futures-util = "0.3.32"
+http-body-util = "0.1.3"
+tokio = { version = "1.52.3", features = ["macros"] }
+tokio-util = { version = "0.7.18", features = ["codec"] }
+tower = "0.5.3"
+tracing = "0.1.44"

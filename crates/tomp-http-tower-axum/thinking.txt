@@ -1,0 +1,52 @@
+
+# For /, not WS
+Bare V1 Req:
+    Required:
+        X-Bare-Host
+        X-Bare-Port
+        X-Bare-Protocol
+        X-Bare-Path
+        X-Bare-Headers
+        X-Bare-Forward-Headers
+    Optional (Caching):
+        X-Bare-Pass-Headers
+        X-Bare-Pass-Status
+
+Bare V2 Req:
+    Required:
+        X-Bare-Host
+        X-Bare-Port
+        X-Bare-Protocol
+        X-Bare-Path
+        X-Bare-Headers (or X-Bare-Headers-0, X-Bare-Headers-1, etc)
+    Optional:
+        X-Bare-Forward-Headers
+        X-Bare-Pass-Headers
+        X-Bare-Pass-Status
+
+Bare V3 Req:
+    Required:
+        X-Bare-Url
+        X-Bare-Headers (or X-Bare-Headers-0, X-Bare-Headers-1, etc)
+    Optional:
+        X-Bare-Forward-Headers
+        X-Bare-Pass-Headers
+        X-Bare-Pass-Status
+
+Bare Headers:
+    X-Bare-Host [Required V1, V2] (Replaced by X-Bare-Url V3)
+    X-Bare-Port [Required V1, V2] (Replaced by X-Bare-Url V3)
+    X-Bare-Protocol [Required V1, V2] (Replaced by X-Bare-Url V3)
+    X-Bare-Path [Required V1, V2] (Replaced by X-Bare-Url V3)
+    X-Bare-Headers [Required V1, V2, V3] (Split into X-Bare-Headers-<0-inf> if big in V2, V3)
+    X-Bare-Forward-Headers [Required V1], {Optional V2, V3}
+    X-Bare-Pass-Headers {Optional V1, V2, V3} => Cache
+    X-Bare-Pass-Status {Optional V1, V2, V3} => Cache
+    X-Bare-Url [Required V3] (Replaces X-Bare-Host, X-Bare-Port, X-Bare-Protocol, X-Bare-Path)
+
+Bare V1, V2, V3 Res:
+    Content-Encoding
+    Content-Length
+    X-Bare-Status
+    X-Bare-Status-Text
+    X-Bare-Headers

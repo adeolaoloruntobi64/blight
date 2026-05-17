@@ -1,0 +1,55 @@
+[package]
+name = "tower-etag-cache"
+version = "0.1.0"
+edition = "2021"
+authors = ["billythedummy"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/billythedummy/tower-etag-cache"
+repository = "https://github.com/billythedummy/tower-etag-cache.git"
+readme = "README.md"
+keywords = ["cache", "async", "service", "middleware", "futures"] # at most 5 keywords per crate
+categories = ["asynchronous", "network-programming", "web-programming"]
+description = "A tower middleware for implementing ETag-based HTTP caching"
+
+include = ["/src", "/README.md"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["http-body-impl"]
+http-body-impl = ["dep:bytes", "dep:http-body"]
+simple-etag-cache-key = []
+base64-blake3-body-etag = ["dep:data-encoding", "dep:blake3"]
+const-lru-provider = [
+    "dep:bytes",
+    "dep:const-lru",
+    "dep:http-body",
+    "dep:hyper",
+    "dep:num-traits",
+    "dep:time",
+    "dep:tokio",
+    "dep:tokio-util",
+    "simple-etag-cache-key",
+    "base64-blake3-body-etag"
+]
+
+[dependencies]
+http = { workspace = true }
+http-body-util = { workspace = true }
+pin-project = { workspace = true }
+tower-layer = { workspace = true }
+tower-service = { workspace = true }
+
+# optional
+blake3 = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
+const-lru = { workspace = true, optional = true }
+data-encoding = { workspace = true, optional = true }
+http-body = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+num-traits = { workspace = true, optional = true }
+time = { workspace = true, features = ["formatting"], optional = true }
+tokio = { workspace = true, features = ["rt", "sync"], optional = true }
+tokio-util = { workspace = true, optional = true }

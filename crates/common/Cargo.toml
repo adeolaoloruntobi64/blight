@@ -1,0 +1,10 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hickory-resolver = { version = "0.26.1", features = ["https-aws-lc-rs", "webpki-roots"] }
+hyper = "1.9.0"
+reqwest = { version = "0.13.3", default-features = false }
+tokio = { version = "1.52.3", features = ["macros"] }

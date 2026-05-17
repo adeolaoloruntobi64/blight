@@ -1,0 +1,9 @@
+{
+  "name": "base",
+  "version": "0.1.0",
+  "files": ["embed-wasm.js"],
+  "type": "module",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

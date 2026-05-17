@@ -1,0 +1,19 @@
+[package]
+name = "wisp-tower-axum"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false }
+bytes = "1.11.1"
+common = { path = "../common" }
+fastwebsockets = { version = "0.10.0", features = ["upgrade", "simdutf8", "unstable-split", "with_axum"] }
+futures = "0.3.32"
+futures-util = "0.3.32"
+http-body-util = "0.1.3"
+hyper-util = { version = "0.1.20", features = ["tokio"] }
+tokio = { version = "1.52.3", features = ["macros"] }
+tokio-util = { version = "0.7.18", features = ["codec", "compat"] }
+tower = "0.5.3"
+tracing = "0.1.44"
+wisp-mux = { path = "../wisp-mux/" }

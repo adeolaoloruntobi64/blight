@@ -1,0 +1,19 @@
+[package]
+name = "conduit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false, features = ["http1", "query", "tokio", "ws", "original-uri"] }
+clap = { version = "4.6.1", features = ["derive"] }
+common = { path = "../crates/common" }
+mimalloc = "0.1.50"
+static-client-tower-axum = { path = "../crates/static-client-tower-axum" }
+tokio = { version = "1.52.3", features = ["net", "rt-multi-thread", "signal"] }
+tomp-http-tower-axum = { path = "../crates/tomp-http-tower-axum" }
+tower = "0.5.3"
+tower-http = { version = "0.6.10", features = ["cors", "fs"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+wisp-tower-axum = { path = "../crates/wisp-tower-axum" }
+wsproxy-tower-axum = { path = "../crates/wsproxy-tower-axum" }
