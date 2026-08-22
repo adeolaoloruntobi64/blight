@@ -46,9 +46,7 @@ async fn server() {
 
     let dns = {
         let mut options = ResolverOpts::default();
-        // We don't want sending 2 requests at the same time, because
-        // that wastes gb limit, although not much, it might add up idk
-        options.num_concurrent_reqs = 4;
+        options.num_concurrent_reqs = 1;
         options.cache_size = 1024;
         options.ip_strategy = LookupIpStrategy::Ipv4thenIpv6;
         let resolver = TokioResolver::builder_with_config(
@@ -75,7 +73,8 @@ async fn server() {
             ws_cache_ttl: Duration::from_secs(60),
             extra_meta: settings.extra_bare_meta,
             block_non_global_ips: !settings.allow_non_global_ip,
-            supported_versions: vec![BareServerVersion::V1, BareServerVersion::V2, BareServerVersion::V3]
+            supported_versions: vec![BareServerVersion::V1, BareServerVersion::V2, BareServerVersion::V3],
+            max_message_size: settings.ws_max_message_size
         },
         dns: dns.clone(),
         cors: CorsLayer::permissive().max_age(Duration::from_secs(60) * 10)

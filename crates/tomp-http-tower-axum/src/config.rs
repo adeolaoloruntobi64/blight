@@ -31,7 +31,8 @@ pub struct BareServerInfo {
     pub ws_cache_ttl: Duration,
     pub extra_meta: bool,
     pub block_non_global_ips: bool,
-    pub supported_versions: Vec<BareServerVersion>
+    pub supported_versions: Vec<BareServerVersion>,
+    pub max_message_size: usize
 }
 
 #[derive(Debug, Clone)]

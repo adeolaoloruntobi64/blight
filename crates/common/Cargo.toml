@@ -8,3 +8,4 @@ hickory-resolver = { version = "0.26.1", features = ["https-aws-lc-rs", "webpki-
 hyper = "1.9.0"
 reqwest = { version = "0.13.3", default-features = false }
 tokio = { version = "1.52.3", features = ["macros"] }
+tokio-websockets = { version = "0.13.3", features = ["client", "rand"] }

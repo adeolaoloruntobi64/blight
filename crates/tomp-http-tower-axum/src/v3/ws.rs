@@ -1,10 +1,12 @@
-use std::{net::SocketAddr, str::FromStr};
+use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 
-use axum::{extract::{ConnectInfo, State, ws::{CloseFrame, Message as AxumMessage, Utf8Bytes, WebSocket, close_code}}, http::{self, HeaderMap, HeaderName, HeaderValue, Uri}};
+use axum::{extract::{ConnectInfo, State}, http::{self, HeaderMap, HeaderName, HeaderValue, Uri}};
 use common::ip;
 use futures_util::StreamExt;
 use serde_json::{json, Map, Value};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio::net::TcpStream;
+use tokio_websockets::{ClientBuilder, CloseCode, Message};
+use tokio_websockets_axum::WebSocket;
 use crate::{appstate::AppState, err::{BareError, BareErrorCode}, structs::{BareRemote, BareServerVersion, WsMeta, WsResponseData}, util};
 
 fn parse_ws(json: &Value) -> Result<WsMeta, BareError> {
@@ -48,15 +50,15 @@ fn parse_ws(json: &Value) -> Result<WsMeta, BareError> {
 }
 
 pub async fn proxy(
-    mut axum_session: WebSocket,
+    mut client_ws: WebSocket,
     appstate: State<AppState>,
     headers: HeaderMap,
     ConnectInfo(connectinfo): ConnectInfo<SocketAddr>
 ) {
     tracing::debug!("Recieved a Websocket Upgrade from {connectinfo} to a Bare V3 endpoint");
 
-    let wmessage = axum_session.next().await.unwrap().unwrap();
-    let text = wmessage.into_text().unwrap();
+    let wmessage = client_ws.next().await.unwrap().unwrap();
+    let text = wmessage.as_text().unwrap();
     let json = serde_json::from_str::<Value>(&text).unwrap();
 
     let protocols = json["protocols"].as_array()
@@ -86,10 +88,11 @@ pub async fn proxy(
             // in like v3/ws-err, so an ID would be generated here, and a message would be sent
             // back starting with "X-Bare-Error-ID: <random_hex(16)>" and send that
             // errs.insert(id, e.into_json())
-            axum_session.send(AxumMessage::Close(Some(CloseFrame {
-                code: close_code::ERROR,
-                reason: Utf8Bytes::from_static("There was a problem while parsing the connect info sent")
-            }))).await.unwrap();
+            let _ = client_ws.send(Message::close(
+                Some(CloseCode::INTERNAL_SERVER_ERROR),
+                "There was a problem while parsing the connect info sent"
+            )).await;
+            let _ = client_ws.close().await;
             return;
         },
     };
@@ -97,10 +100,11 @@ pub async fn proxy(
     let uri = parsed_ws.wremote.to_url();
 
     let Some(host) = uri.host() else {
-        axum_session.send(AxumMessage::Close(Some(CloseFrame {
-            code: close_code::ERROR,
-            reason: Utf8Bytes::from_static("Host was not found in uri")
-        }))).await.unwrap();
+        let _ = client_ws.send(Message::close(
+            Some(CloseCode::INTERNAL_SERVER_ERROR),
+            "Host was not found in uri"
+        )).await;
+        let _ = client_ws.close().await;
         return
     };
 
@@ -109,78 +113,94 @@ pub async fn proxy(
         Some("ws") => Some(80),
         _ => None,
     }) else {
-            axum_session.send(AxumMessage::Close(Some(CloseFrame {
-                code: close_code::ERROR,
-                reason: Utf8Bytes::from_static("The port for the uri could not be deduced")
-            }))).await.unwrap();
-            return
+        let _ = client_ws.send(Message::close(
+            Some(CloseCode::INTERNAL_SERVER_ERROR),
+            "The port for the uri could not be deduced"
+        )).await;
+        let _ = client_ws.close().await;
+        return;
     };
 
     let Ok(dnsres) = appstate.resolver.lookup_socket_with_port(host, port).await else {
-        axum_session.send(AxumMessage::Close(Some(CloseFrame {
-            code: close_code::ERROR,
-            reason: Utf8Bytes::from_static("DNS failed to find the IP of the url")
-        }))).await.unwrap();
-        return
+        let _ = client_ws.send(Message::close(
+            Some(CloseCode::INTERNAL_SERVER_ERROR),
+            "DNS Failed to find the IP of the url"
+        )).await;
+        let _ = client_ws.close().await;
+    return;
     };
 
     let sockets = dnsres.addrs;
 
     if let Some(ip) = sockets.iter().map(|x| x.ip()).find(ip::ip_is_not_global) {
-        axum_session.send(AxumMessage::Close(Some(CloseFrame {
-            code: close_code::ERROR,
-            reason: Utf8Bytes::from(format!("The IP of the URI's host is {ip}, which is not a global address"))
-        }))).await.unwrap();
+        let _ = client_ws.send(Message::close(
+            Some(CloseCode::INTERNAL_SERVER_ERROR),
+            &format!("the IP of the URI's host is {ip}, which is not a global address")
+        )).await;
+        let _ = client_ws.close().await;
         return
    }
    
    tracing::debug!("Sockets for request {} found: {:?}", parsed_ws.wremote.host, sockets);
     
-    let mut forward_request = uri.into_client_request().unwrap();
-    forward_request.headers_mut().extend(parsed_ws.wheaders.clone());
-    forward_request.headers_mut().extend(
-        util::getxb::get_x_bare_forward_headers_map(&headers, &parsed_ws.wforward_headers)
-    );
-    if let Some(protocols_str) = oprotocols_str {
+    let mut builder = Some(ClientBuilder::from_uri(uri.clone()));
+    let mut insert = |key: HeaderName, value: HeaderValue| {
+        let current = builder
+            .take()
+            .expect("builder was unexpectedly consumed");
+        builder = Some(
+            current
+                .add_header(key, value)
+                .expect("failed to add WebSocket header"),
+        );
+    };
+    parsed_ws.wheaders.iter()
+        .for_each(|(k, v)| insert(k.clone(), v.clone()));
+   
+   if let Some(protocols_str) = oprotocols_str {
         // Looking at firefox req headers and js docs, [] is passed if no protocol is
         // given, but if it's [], Sec-WebSocket-Protocol is not sent. Basically, if there is
         // no protocol, then don't add this header.
         // Tested with postman. wss://echo-websocket.hoppscotch.io doesn't work if Sec-WebSocket-Protocol
         // is set to nothing.
-        forward_request.headers_mut().insert(
-            "Sec-WebSocket-Protocol",
+        insert(
+            HeaderName::from_static("Sec-WebSocket-Protocol"),
             protocols_str.parse::<_>().unwrap()
         );
     }
     
-    tracing::debug!("Client {connectinfo} has requested to connect to {}", forward_request.uri());
-    
-    let (tungstenite_socket, remote_res) = match util::ws::connect_async(forward_request, &sockets).await { 
+    util::getxb::get_x_bare_forward_headers_map(
+        &headers,
+        &parsed_ws.wforward_headers,
+        insert,
+    );
+
+    let builder = builder.expect("builder was unexpectedly consumed");
+    tracing::debug!("Client {connectinfo} has requested to connect to {}", uri);
+
+    let stream = match TcpStream::connect(sockets.as_slice()).await {
+        Ok(s) => s,
+        Err(e) => {
+            let errstr = format!("Couldn't Connect to Remote For: {e:?}");
+            tracing::trace!(errstr);
+            let _ = client_ws.send(Message::close(
+                Some(CloseCode::INTERNAL_SERVER_ERROR),
+                &errstr
+            )).await;
+            let _ = client_ws.close().await;
+            return;
+        }
+    };
+    let (server_ws, remote_res) = match builder.connect_on(stream).await {
         Ok(t) => t,
         Err(e) => {
-            let mut errstr = format!("Couldn't Connect to Remote For: {e:?}");
-            if let tokio_tungstenite::tungstenite::error::Error::Http(x) = e {
-                let bytes = x.body().as_ref().unwrap();
-                let body = std::str::from_utf8(&bytes).unwrap();
-                errstr += &format!("\nResponse Err Body {body}");
-            }
+            let errstr = format!("Couldn't Communicate with the remote server: {e:?}");
             tracing::trace!(errstr);
-            // https://docs.konghq.com/hub/kong-inc/websocket-size-limit/#for-control-frames
-            // All control frames (ping, pong, and close) have a max payload size of 125 bytes
-            // https://datatracker.ietf.org/doc/html/rfc6455#section-5.5
-            // Currently defined opcodes for control frames include 0x8 (Close), 0x9 (Ping),
-            // and 0xA (Pong) ... All control frames MUST have a payload length of 125 bytes or less
-            // and MUST NOT be fragmented.
-            
-            // In the future, I might want to make a sort of system where the error is stored
-            // in like v3/ws-err, so an ID would be generated here, and a message would be sent
-            // back starting with "X-Bare-Error-ID: <random_hex(16)>" and send that
-            // errs.insert(id, e.into_json()). I might make a properly formatted response object and
-            // cache that instead of a regular string
-            axum_session.send(AxumMessage::Close(Some(CloseFrame {
-                code: close_code::ERROR,
-                reason: Utf8Bytes::from_static("There was an error while trying to connect to the remote")
-            }))).await.unwrap();
+            let _ = client_ws.send(Message::close(
+                Some(CloseCode::INTERNAL_SERVER_ERROR),
+                &errstr
+            )).await;
+            let _ = client_ws.close().await;
             return;
         }
     };
@@ -221,19 +241,22 @@ pub async fn proxy(
         ("setCookies".into(), res_set_cookies.into()),
     ]);
 
+    let mut map = HashMap::new();
+    util::getxb::get_x_bare_forward_headers_map(&headers, &parsed_ws.wforward_headers, |k, v| {
+        map.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
+    });
+
     if let Some(wresponse_fmt) = wresponse_fmt {
         let other_metadata = json!({
             "version": "v3",
             "remote": parsed_ws.wremote.to_url().to_string(),
             "headers": util::hehs::headermap_to_hashmap(&parsed_ws.wheaders),
-            "forward_headers": util::hehs::headermap_to_hashmap(
-                &util::getxb::get_x_bare_forward_headers_map(&headers, &parsed_ws.wforward_headers)
-            ),
+            "forward_headers": map,
             "response": wresponse_fmt
         });
         msg.insert("extraMeta".into(), other_metadata.into());
     }
     
-    axum_session.send(AxumMessage::Text(Utf8Bytes::from(Value::Object(msg).to_string()))).await.unwrap();
-    util::ws::handle_messages(axum_session, tungstenite_socket).await
+    let _ = client_ws.send(Message::text(Value::Object(msg).to_string())).await;
+    util::ws::handle_messages(client_ws.inner, server_ws).await
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{body::Body, extract::State, http::{HeaderMap, Response}, response::IntoResponse};
 use serde_json::{json, Map, Value};
 use crate::{appstate::AppState, err::{BareError, BareErrorCode}, structs::BareServerVersion, util};
@@ -59,11 +61,13 @@ pub async fn proxy(
                 "path": meta.wremote.pathquery,
                 "protocol": meta.wremote.scheme + ":"
         }));
+        let mut map = HashMap::new();
+        util::getxb::get_x_bare_forward_headers_map(&headers, &meta.wforward_headers, |k, v| {
+            map.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
+        });
         meta_map.insert(
             "forward_headers".into(), 
-            serde_json::to_value(util::hehs::headermap_to_hashmap(
-                &util::getxb::get_x_bare_forward_headers_map(&headers, &meta.wforward_headers)
-            )).unwrap()
+            serde_json::to_value(map).unwrap()
         );
         meta_map.insert("response".into(), json!({
             "status": wresponse.status,

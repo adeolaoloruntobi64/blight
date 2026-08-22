@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use axum::{body::Body, extract::{ConnectInfo, OriginalUri, State}, http::{Response, StatusCode}};
+use tokio_websockets::Limits;
 use tokio_websockets_axum::OptionalWebSocketUpgrade;
 use crate::{appstate::AppState, util, versions::WispServerVersion};
 
@@ -14,7 +15,9 @@ pub async fn proxy(
     tracing::debug!("Recieved request from {} to a Wisp V1 endpoint", connectinfo.0);
     match ws.0 {
         Some(ws) => {
-            ws.on_upgrade(move |socket| async move {
+            ws.limits(
+                Limits::default().max_payload_len(Some(appstate.arcedinfo.max_message_size))
+            ).on_upgrade(move |socket| async move {
                 util::proxy(appstate, socket, connectinfo, WispServerVersion::V1).await
             })
         },

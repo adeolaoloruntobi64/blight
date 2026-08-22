@@ -1,9 +1,11 @@
 
 use std::net::SocketAddr;
 
-use axum::{body::Body, extract::{ConnectInfo, State, WebSocketUpgrade}, http::{self, HeaderMap}, response::{IntoResponse, Response}};
+use axum::{body::Body, extract::{ConnectInfo, State}, http::{self, HeaderMap, HeaderName, HeaderValue}, response::{IntoResponse, Response}};
 use common::ip;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio::net::TcpStream;
+use tokio_websockets::{ClientBuilder, Limits};
+use tokio_websockets_axum::WebSocketUpgrade;
 
 use crate::{appstate::AppState, err::{BareError, BareErrorCode}, structs::{BareServerVersion, WsResponseData}, util};
 
@@ -97,25 +99,35 @@ pub async fn proxy(
         }.into_response()
    }
    
-   tracing::debug!("Sockets for request {} found: {:?}", meta.wremote.host, sockets);
+    tracing::debug!("Sockets for request {} found: {:?}", meta.wremote.host, sockets);
 
-    let mut forward_request = uri.into_client_request().unwrap();
-    forward_request.headers_mut().extend(meta.wheaders.clone());
-    forward_request.headers_mut().extend(
-        util::getxb::get_x_bare_forward_headers_map(&headers, &meta.wforward_headers)
+    let mut builder = Some(ClientBuilder::from_uri(uri.clone()));
+    let mut insert = |key: HeaderName, value: HeaderValue| {
+        let current = builder
+            .take()
+            .expect("builder was unexpectedly consumed");
+        builder = Some(
+            current
+                .add_header(key, value)
+                .expect("failed to add WebSocket header"),
+        );
+    };
+    meta.wheaders.iter()
+        .for_each(|(k, v)| insert(k.clone(), v.clone()));
+   
+    util::getxb::get_x_bare_forward_headers_map(
+        &headers,
+        &meta.wforward_headers,
+        insert,
     );
 
-    tracing::debug!("Client {connectinfo} has requested to connect to {}", forward_request.uri());
+    let builder = builder.expect("builder was unexpectedly consumed");
+    tracing::debug!("Client {connectinfo} has requested to connect to {}", uri);
 
-    let (tungstenite_socket, remote_res) = match util::ws::connect_async(forward_request, &sockets).await { 
-        Ok(t) => t,
+    let stream = match TcpStream::connect(sockets.as_slice()).await {
+        Ok(s) => s,
         Err(e) => {
-            let mut errstr = format!("Couldn't Connect to Remote For: {e:?}");
-            if let tokio_tungstenite::tungstenite::error::Error::Http(x) = e {
-                let bytes = x.body().as_ref().unwrap();
-                let body = std::str::from_utf8(&bytes).unwrap();
-                errstr += &format!("\nResponse Err Body {body}");
-            }
+            let errstr = format!("Couldn't Connect to Remote For: {e:?}");
             tracing::trace!(errstr);
             return Response::builder()
                 .status(404)
@@ -123,9 +135,22 @@ pub async fn proxy(
                 .unwrap();
         }
     };
-
-    let mut res =  ws.on_upgrade(
-        move |axum_session| util::ws::handle_messages(axum_session, tungstenite_socket)
+    let (server_ws, remote_res) = match builder.connect_on(stream).await {
+        Ok(t) => t,
+        Err(e) => {
+            let errstr = format!("Couldn't Communicate with the remote server: {e:?}");
+            tracing::trace!(errstr);
+            return Response::builder()
+                .status(404)
+                .body(errstr.into())
+                .unwrap();
+        }
+    };
+    
+    let mut res = ws.limits(
+        Limits::default().max_payload_len(Some(appstate.arcedinfo.max_message_size))
+    ).on_upgrade(
+        move |client_ws| util::ws::handle_messages(client_ws.inner, server_ws)
     ).into_response();
 
     res.headers_mut().insert("Sec-WebSocket-Protocol", id.parse().unwrap()); 

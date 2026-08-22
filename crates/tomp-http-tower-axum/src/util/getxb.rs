@@ -264,16 +264,13 @@ pub fn get_x_bare_forward_headers(
 pub fn get_x_bare_forward_headers_map(
     headers: &HeaderMap,
     forward_headers: &Vec<HeaderName>,
-) -> HeaderMap {
-    let mut forward_headers_map = HeaderMap::new();
-
+    mut insert: impl FnMut(HeaderName, HeaderValue)
+) {
     for header in forward_headers {
         if let Some(value) = headers.get(header) {
-            forward_headers_map.insert(header.clone(), value.clone());
+            insert(header.clone(), value.clone());
         }
     }
-
-    forward_headers_map
 }
 
 /// Gets X-Bare-Pass-Headers. Since this is an optional header in all versions,

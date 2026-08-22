@@ -17,7 +17,8 @@ pub fn req_from_bare_request(
     let mut reqw_headers = HeaderMap::new();
     
     reqw_headers.extend(parsed_req.headers.clone());
-    reqw_headers.extend(util::getxb::get_x_bare_forward_headers_map(headers, &parsed_req.forward_headers));
+    let insert = |name, value| { reqw_headers.insert(name, value); };
+    util::getxb::get_x_bare_forward_headers_map(headers, &parsed_req.forward_headers, insert);
     
     let body = if NULL_BODY_METHODS.contains(&method.as_str()) {
         reqwest::Body::default()

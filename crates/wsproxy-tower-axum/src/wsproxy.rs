@@ -1,12 +1,11 @@
 use std::{error::Error, net::SocketAddr};
 
-use axum::{RequestExt, body::Body, extract::{ConnectInfo, OriginalUri, Path, Query, Request, State, rejection::QueryRejection}, http::{StatusCode, uri::Authority}, response::Response};
-use bytes::BytesMut;
+use axum::{body::Body, extract::{ConnectInfo, OriginalUri, Path, Query, State, rejection::QueryRejection}, http::{StatusCode, uri::Authority}, response::Response};
 use common::ip;
-use fastwebsockets::{
-    upgrade::{self, UpgradeFut}, CloseCode, FragmentCollector, Frame, OpCode, Payload, WebSocketError
-};
-use tokio::{io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader} ,net::{TcpStream, UdpSocket}};
+use futures_util::StreamExt;
+use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader} ,net::{TcpStream, UdpSocket}};
+use tokio_websockets::{CloseCode, Limits, Message};
+use tokio_websockets_axum::{OptionalWebSocketUpgrade, WebSocket};
 
 use crate::appstate::AppState;
 
@@ -16,92 +15,56 @@ pub async fn proxy(
     original: OriginalUri,
     appstate: State<AppState>,
     connectinfo: ConnectInfo<SocketAddr>,
-    mut request: Request<Body>,
+    ws: OptionalWebSocketUpgrade,
 ) -> Response<Body> {
     tracing::debug!("Recieved request from {} to a wsproxy endpoint", connectinfo.0);
-
-    match request.extract_parts::<upgrade::IncomingUpgrade>().await.ok() {
+    match ws.0 {
         Some(ws) => {
-            let Ok((res, fut)) = ws.upgrade() else {
-                return Response::builder()
-                    .status(StatusCode::OK)
-                    .body("Couldn't create web socket connection".into())
-                    .unwrap()
-            };
-            tokio::spawn(wsproxy(appstate, fut, path, query.ok(), connectinfo));
-            Response::from_parts(
-                res.into_parts().0,
-                Body::empty(),
-            )
+            ws.limits(
+                    Limits::default().max_payload_len(Some(appstate.arcedinfo.max_message_size))
+                ).on_upgrade(move |socket| async move {
+                    let _ = wsproxy(appstate, socket, path, query.ok(), connectinfo).await;
+                })
         },
-        None => Response::builder()
-            .status(StatusCode::OK)
-            .body(format!("Bonjour, Comment ca va? Tu es a '{:?}' at {:?}", path, original).into())
-            .unwrap()
-    }    
+        None => {
+             Response::builder()
+                .status(StatusCode::OK)
+                .body(format!("Bonjour, Comment ca va? Tu es a '{:?}' at {:?}", path, original).into())
+                .unwrap()
+        }
+    }
 }
 
-pub struct WebSocketStreamWrapper<T: AsyncRead + AsyncWrite + Unpin>(pub FragmentCollector<T>);
-
-pub enum WebSocketFrame {
-	Data(BytesMut),
-	Close,
-	Ignore,
-}
 
 pub struct WsProxyClose {
-    pub code: u16,
+    pub code: CloseCode,
     pub reason: &'static str,
     pub err: Option<Box<dyn Error + Send + Sync>>
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> WebSocketStreamWrapper<T> {
-	pub async fn read(&mut self) -> Result<WebSocketFrame, WebSocketError> {
-		let frame = self.0.read_frame().await?;
-		Ok(match frame.opcode {
-			OpCode::Text | OpCode::Binary => WebSocketFrame::Data(BytesMut::from(&*frame.payload)),
-			OpCode::Close => WebSocketFrame::Close,
-			_ => WebSocketFrame::Ignore,
-		})
-	}
-
-	pub async fn write(&mut self, data: &[u8]) -> Result<(), WebSocketError> {
-		self.0
-			.write_frame(Frame::binary(Payload::Borrowed(data)))
-			.await
-	}
-
-	pub async fn close(&mut self, code: u16, reason: &[u8]) -> Result<(), WebSocketError> {
-		self.0.write_frame(Frame::close(code, reason)).await
-	}
-}
-
 async fn wsproxy(
     appstate: State<AppState>,
-    ws: UpgradeFut,
+    mut ws: WebSocket,
     path: Path<String>,
     query: Option<Query<String>>,
     connectinfo: ConnectInfo<SocketAddr>,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
-    let mut ws = ws.await?;
-    ws.set_max_message_size(appstate.arcedinfo.max_message_size);
-    
-    let ws = FragmentCollector::new(ws);
-	let mut ws = WebSocketStreamWrapper(ws);
-    match handle_wsproxy(appstate, &mut ws, path, query, connectinfo).await { Some(close) => {
-        ws.close(close.code, close.reason.as_bytes()).await?;
-        match close.err {
-            Some(err) => Err(err),
-            None => Ok(())
+    match handle_wsproxy(appstate, &mut ws, path, query, connectinfo).await {
+        Some(close) => {
+            ws.send(Message::close(Some(close.code), close.reason)).await?;
+            ws.close().await?;
+            match close.err {
+                Some(err) => Err(err),
+                None => Ok(())
+            }
         }
-    } _ => {
-        Ok(())
-    }}
+        None => Ok(())
+    }
 }
 
-async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
+async fn handle_wsproxy(
     appstate: State<AppState>,
-    ws: &mut WebSocketStreamWrapper<T>,
+    ws: &mut WebSocket,
     path: Path<String>,
     query: Option<Query<String>>,
     connectinfo: ConnectInfo<SocketAddr>,
@@ -109,7 +72,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
     let authority = match Authority::try_from(path.as_str()) {
         Ok(a) => a,
         Err(e) => return Some(WsProxyClose {
-            code: CloseCode::Error.into(),
+            code: CloseCode::INTERNAL_SERVER_ERROR,
             reason: "failed to parse authority",
             err: Some(e.into())
         })
@@ -118,7 +81,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
     // https://github.com/ading2210/libcurl.js?tab=readme-ov-file#changing-the-network-transport
     let Some(port) = authority.port_u16() else {
         return Some(WsProxyClose {
-            code: CloseCode::Error.into(),
+            code: CloseCode::INTERNAL_SERVER_ERROR,
             reason: "failed to get port",
             err: Some(format!("Authority '{authority}' does not contain a port number").into())
         })
@@ -128,7 +91,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
 
     if (!appstate.arcedinfo.allow_non_internet_ports && !(port == 80 || port == 443)) || (!appstate.arcedinfo.allow_non_standard_udp && udp) {
         return Some(WsProxyClose {
-            code: CloseCode::Error.into(),
+            code: CloseCode::INTERNAL_SERVER_ERROR,
             reason: "blocked connection due to port or udp",
             err: Some(format!("Error allowing connection, port or udp => Port: {port}, UDP: {udp}").into())
         });
@@ -139,7 +102,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
     let dnsres = match appstate.resolver.lookup_socket_with_port(authority.host(), port).await {
         Ok(d) => d,
         Err(e) => return Some(WsProxyClose {
-            code: CloseCode::Error.into(),
+            code: CloseCode::INTERNAL_SERVER_ERROR,
             reason: "failed to resolve uri",
             err: Some(e.into())
         })
@@ -150,18 +113,17 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
     if !appstate.arcedinfo.allow_non_global_ip {
         if let Some(ip) = sockets.iter().map(|x| x.ip()).find(ip::ip_is_not_global) {
             return Some(WsProxyClose {
-                code: CloseCode::Error.into(),
+                code: CloseCode::INTERNAL_SERVER_ERROR,
                 reason: "blocked non-global ip",
                 err: Some(format!("Non-global IP {ip} found for {authority}").into())
             });
         }
     }
     let to_close = |ret, reason| match ret {
-        Ok(true) => Some(WsProxyClose { code: CloseCode::Normal.into(), reason: "", err: None }),
+        Ok(true) => Some(WsProxyClose { code: CloseCode::NORMAL_CLOSURE, reason: "Closed Successfully", err: None }),
         Ok(false) => None,
-        Err(e) => Some(WsProxyClose { code: CloseCode::Error.into(), reason, err: Some(e) }),
+        Err(e) => Some(WsProxyClose { code: CloseCode::INTERNAL_SERVER_ERROR, reason, err: Some(e) }),
     };
-
     let close = if udp {
         async {
             let stream = async {
@@ -175,7 +137,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
             }.await;
             let Some(stream) = stream else {
                 return Some(WsProxyClose {
-                    code: CloseCode::Error.into(),
+                    code: CloseCode::INTERNAL_SERVER_ERROR,
                     reason: "Could not connect to any of the provided sockets",
                     err: Some(format!("Could not connect to any of {sockets:?}").into()),
                 });
@@ -184,20 +146,25 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
             let ret = async {
                 loop {
                     tokio::select! {
-                        x = ws.read() => match x? {
-                            WebSocketFrame::Data(data) => {
-                                let i = stream.send(&data).await?;
-                                if i != data.len() {
-                                    return Err(format!("Error sending packets to udp socket: # Bytes Sent: {i}, # Expected Bytes Sent: {}", data.len()).into());
+                        x = ws.next() => match x {
+                            Some(Ok(msg)) => {
+                                if msg.is_binary() {
+                                    let data = msg.as_payload();
+                                    let i = stream.send(data).await?;
+                                    if i != data.len() {
+                                        return Err(format!("Error sending packets to udp socket: # Bytes Sent: {i}, # Expected Bytes Sent: {}", data.len()).into());
+                                    }
+                                } else if msg.is_close() {
+                                    return Ok(false);
                                 }
                             }
-                            WebSocketFrame::Close => return Ok(false),
-                            WebSocketFrame::Ignore => {}
+                            Some(Err(e)) => return Err(e.into()),
+                            None => return Ok(false),
                         },
                         size = stream.recv(&mut buffer) => {
                             let size = size?;
                             if size == 0 { return Ok(true); }
-                            ws.write(&buffer[..size]).await?;
+                            ws.send(Message::binary(buffer[..size].to_vec())).await?;
                         }
                     }
                 }
@@ -209,29 +176,38 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
             let mut stream = match TcpStream::connect(sockets.as_slice()).await {
                 Ok(s) => BufReader::new(s),
                 Err(e) => return Some(WsProxyClose {
-                    code: CloseCode::Error.into(),
+                    code: CloseCode::INTERNAL_SERVER_ERROR,
                     reason: "failed to connect",
                     err: Some(e.into()),
                 }),
             };
+
             let ret = async {
                 loop {
                     tokio::select! {
-                        x = ws.read() => match x? {
-                            WebSocketFrame::Data(data) => {
-                                let i = stream.write(&data).await?;
-                                if i != data.len() {
-                                    return Err(format!("Error sending packets to tcp stream: # Bytes Sent: {i}, # Expected Bytes Sent: {}", data.len()).into());
+                        x = ws.next() => match x {
+                            Some(Ok(msg)) => {
+                                if msg.is_binary() {
+                                    let data = msg.as_payload();
+                                    let i = stream.write(data).await?;
+                                    if i != data.len() {
+                                        return Err(format!("Error sending packets to tcp stream: # Bytes Sent: {i}, # Expected Bytes Sent: {}", data.len()).into());
+                                    }
+                                } else if msg.is_close() {
+                                    stream.shutdown().await?;
+                                    return Ok(false);
                                 }
+                                // ignore ping/pong/text
                             }
-                            WebSocketFrame::Close => { stream.shutdown().await?; return Ok(false); }
-                            WebSocketFrame::Ignore => {}
+                            Some(Err(e)) => return Err(e.into()),
+                            None => { stream.shutdown().await?; return Ok(false); }
                         },
                         x = stream.fill_buf() => {
                             let x = x?;
                             let len = x.len();
                             if len == 0 { return Ok(true); }
-                            ws.write(x).await?;
+                            let v = x.to_vec();
+                            ws.send(Message::binary(v)).await?;
                             stream.consume(len);
                         }
                     }
@@ -240,8 +216,6 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
             to_close(ret, "Failed to finish transferring TCP packets")
         }.await
     };
-
     tracing::debug!("{:?}: disconnected (wsproxy)", connectinfo.0);
-
     close
 }

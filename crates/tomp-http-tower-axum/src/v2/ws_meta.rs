@@ -74,6 +74,10 @@ pub async fn proxy(
 
     let mut response = if appstate.arcedinfo.extra_meta {
         // This isn't part of the specification. I'm just putting it here
+        let mut map = HashMap::new();
+        util::getxb::get_x_bare_forward_headers_map(&headers, &meta.wforward_headers, |k, v| {
+            map.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
+        });
         let json = json!({
             "version": "v2",
             "remote": {
@@ -83,9 +87,7 @@ pub async fn proxy(
                 "protocol": meta.wremote.scheme + ":"
             },
             "headers": util::hehs::headermap_to_hashmap(&meta.wheaders),
-            "forward_headers": util::hehs::headermap_to_hashmap(
-                &util::getxb::get_x_bare_forward_headers_map(&headers, &meta.wforward_headers)
-            ),
+            "forward_headers": map,
             "response": {
                 "status": wresponse.status,
                 "status_text": wresponse.status_text,

@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
-use axum::{RequestExt, body::Body, extract::{ConnectInfo, Request, State, WebSocketUpgrade}, http::Response, response::IntoResponse};
+use axum::{RequestExt, body::Body, extract::{ConnectInfo, Request, State}, http::Response, response::IntoResponse};
+use tokio_websockets::Limits;
+use tokio_websockets_axum::WebSocketUpgrade;
 use crate::appstate::AppState;
 
 mod ws;
@@ -15,9 +17,13 @@ pub async fn proxy(
     tracing::debug!("Recieved request from {} to a Bare V3 endpoint", connectinfo.0);
     let headers = request.headers().clone();
     match request.extract_parts::<WebSocketUpgrade>().await.ok() {
-        Some(ws) => ws.on_upgrade(
-            move |session| ws::proxy(session, appstate, headers, connectinfo)
-        ).into_response(),
+        Some(ws) => {
+            ws.limits(
+                Limits::default().max_payload_len(Some(appstate.arcedinfo.max_message_size))
+            ).on_upgrade(
+                move |session| ws::proxy(session, appstate, headers, connectinfo)
+            ).into_response()
+        },
         None => req::proxy(appstate, connectinfo, headers, request).await
     }
 }

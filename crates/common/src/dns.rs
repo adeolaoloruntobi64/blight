@@ -8,6 +8,7 @@ use reqwest::dns::{Name, Resolve, Resolving};
 use hyper::service::Service;
 
 pub use hickory_resolver;
+use tokio_websockets::{Error, resolver::Resolver};
 
 // cloning this will still point to the same resolver
 #[derive(Debug, Clone)]
@@ -103,5 +104,16 @@ impl Service<Name> for DnsResolver {
                 .await
         });
         DnsResFuture { inner: task }
+    }
+}
+
+impl Resolver for DnsResolver {
+    async fn resolve(&self, host: &str, port: u16) -> Result<SocketAddr, Error> {
+        self.lookup_socket_with_port(host, port)
+            .await
+            .map_err(|_| Error::CannotResolveHost)?
+            .into_iter()
+            .next()
+            .ok_or(Error::CannotResolveHost)
     }
 }

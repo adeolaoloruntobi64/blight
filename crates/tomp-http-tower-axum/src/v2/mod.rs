@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
-use axum::{RequestExt, body::Body, extract::{ConnectInfo, Request, State, WebSocketUpgrade}, http::Response};
+use axum::{RequestExt, body::Body, extract::{ConnectInfo, Request, State}, http::Response};
+use tokio_websockets_axum::WebSocketUpgrade;
 use crate::appstate::AppState;
 
 mod ws;

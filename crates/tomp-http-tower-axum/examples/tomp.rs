@@ -71,17 +71,18 @@ async fn main() {
                 website: "https://www.example.com/".into()
             },
             project: ProjectInfo {
-                name: "Evade-Bare".into(),
+                name: "Bare-Demo".into(),
                 description: "Rust TOMP implementation".into(),
                 email: "None".into(),
                 website: "None".into(),
-                repository: "I should make a github".into(),
+                repository: "None".into(),
                 version: "0.1.0".into()
             },
             ws_cache_ttl: Duration::from_secs(60),
             extra_meta: false,
             block_non_global_ips: true,
-            supported_versions: vec![BareServerVersion::V1, BareServerVersion::V2, BareServerVersion::V3]
+            supported_versions: vec![BareServerVersion::V1, BareServerVersion::V2, BareServerVersion::V3],
+            max_message_size: 1024 * 1024
         },
         dns,
         cors: CorsLayer::permissive().max_age(Duration::from_secs(60) * 10)
