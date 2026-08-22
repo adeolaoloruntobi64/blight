@@ -106,7 +106,7 @@ pub async fn proxy(
         }.into_response()
     };
 
-    let sockets = dnsres.collect::<Vec<_>>();
+    let sockets = dnsres.addrs;
 
     if let Some(ip) = sockets.iter().map(|x| x.ip()).find(ip::ip_is_not_global) {
         return BareError {

@@ -88,15 +88,15 @@ async fn wsproxy(
     
     let ws = FragmentCollector::new(ws);
 	let mut ws = WebSocketStreamWrapper(ws);
-    if let Some(close) = handle_wsproxy(appstate, &mut ws, path, query, connectinfo).await {
+    match handle_wsproxy(appstate, &mut ws, path, query, connectinfo).await { Some(close) => {
         ws.close(close.code, close.reason.as_bytes()).await?;
         match close.err {
             Some(err) => Err(err),
             None => Ok(())
         }
-    } else {
+    } _ => {
         Ok(())
-    }
+    }}
 }
 
 async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
@@ -145,7 +145,7 @@ async fn handle_wsproxy<T: AsyncRead + AsyncWrite + Unpin>(
         })
     };
 
-    let sockets = dnsres.collect::<Vec<_>>();
+    let sockets = dnsres.addrs;
 
     if !appstate.arcedinfo.allow_non_global_ip {
         if let Some(ip) = sockets.iter().map(|x| x.ip()).find(ip::ip_is_not_global) {

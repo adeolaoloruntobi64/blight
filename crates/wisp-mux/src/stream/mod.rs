@@ -19,7 +19,7 @@ pub use compat::*;
 pub use handles::*;
 
 macro_rules! unlock_some {
-	($unlock:expr, $x:expr) => {
+	($unlock:expr_2021, $x:expr_2021) => {
 		if let Err(err) = $x {
 			$unlock.unlock();
 			return Poll::Ready(Some(Err(err)));
@@ -27,7 +27,7 @@ macro_rules! unlock_some {
 	};
 }
 macro_rules! unlock {
-	($unlock:expr, $x:expr) => {
+	($unlock:expr_2021, $x:expr_2021) => {
 		if let Err(err) = $x {
 			$unlock.unlock();
 			return Poll::Ready(Err(err));
@@ -82,17 +82,17 @@ impl<W: TransportWrite> Stream for MuxStreamRead<W> {
 		}
 
 		let was_reading = self.chunk.is_some();
-		let chunk = if let Some(chunk) = self.chunk.take() {
+		let chunk = match self.chunk.take() { Some(chunk) => {
 			chunk
-		} else {
+		} _ => {
 			let Some(chunk) = ready!(self.inner.poll_next_unpin(cx)) else {
 				return Poll::Ready(None);
 			};
 			chunk
-		};
+		}};
 
 		macro_rules! ready {
-			($x:expr) => {
+			($x:expr_2021) => {
 				match $x {
 					Poll::Ready(x) => x,
 					Poll::Pending => {

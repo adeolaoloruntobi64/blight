@@ -16,16 +16,17 @@ pub struct DnsResolver {
 }
 
 pub struct DnsResAddrs {
-    inner: LookupIp,
-    port: u16
+    pub addrs: Vec<SocketAddr>,
 }
 
-impl Iterator for DnsResAddrs {
+impl IntoIterator for DnsResAddrs {
     type Item = SocketAddr;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.iter().next().map(|addr| SocketAddr::from((addr, self.port)))
+    type IntoIter = std::vec::IntoIter<SocketAddr>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.addrs.into_iter()
     }
 }
+    
 pub struct DnsResFuture {
     inner: JoinHandle<Result<DnsResAddrs, NetError>>
 }
@@ -57,14 +58,15 @@ impl DnsResolver {
         self.resolver.lookup_ip(name).await
     }
     
-    pub async fn lookup_socket(&self, name: &str) -> Result<DnsResAddrs, NetError> {
-        let ips = self.lookup_ip(name).await?;
-        Ok(DnsResAddrs { inner: ips, port: 0 })
-    }
-
     pub async fn lookup_socket_with_port(&self, name: &str, port: u16) -> Result<DnsResAddrs, NetError> {
         let ips = self.lookup_ip(name).await?;
-        Ok(DnsResAddrs { inner: ips, port })
+        Ok(DnsResAddrs {
+            addrs: ips.iter().map(|ip| SocketAddr::from((ip, port))).collect(),
+        })
+    }
+
+    pub async fn lookup_socket(&self, name: &str) -> Result<DnsResAddrs, NetError> {
+        self.lookup_socket_with_port(name, 0).await
     }
 
     // literally just lookup
@@ -82,7 +84,7 @@ impl Resolve for DnsResolver {
         let dns_resolver = self.clone();
         Box::pin(async move {
             let sockets = dns_resolver.lookup_socket(name.as_str()).await?;
-            let boxed_ips: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(sockets);
+            let boxed_ips: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(sockets.into_iter());
             Ok(boxed_ips)
         })
     }
@@ -100,7 +102,6 @@ impl Service<Name> for DnsResolver {
                 .lookup_socket(req.as_str())
                 .await
         });
-
         DnsResFuture { inner: task }
     }
 }

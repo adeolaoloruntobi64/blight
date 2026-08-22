@@ -266,16 +266,16 @@ impl<R: TransportRead, W: TransportWrite, M: MultiplexorActor<W>> MuxInner<R, W,
 			(rx, self.tx.clone(), extensions),
 			|(mut rx, mut tx, mut extensions)| async {
 				let ret: Result<Option<WsEvent<W>>, WispError> = async {
-					if let Some(msg) = rx.next().await {
+					match rx.next().await { Some(msg) => {
 						match MaybeExtensionPacket::decode(msg?, &mut extensions, &mut rx, &mut tx)
 							.await?
 						{
 							MaybeExtensionPacket::Packet(x) => Ok(Some(WsEvent::WispMessage(x))),
 							MaybeExtensionPacket::ExtensionHandled => Ok(None),
 						}
-					} else {
+					} _ => {
 						Ok(None)
-					}
+					}}
 				}
 				.await;
 				ret.transpose().map(|x| (x, (rx, tx, extensions)))
@@ -309,7 +309,7 @@ impl<R: TransportRead, W: TransportWrite, M: MultiplexorActor<W>> MuxInner<R, W,
 					let _ = channel.send(ret);
 				}
 				WsEvent::Close(id, close, channel) => {
-					if let Some(stream) = self.streams.remove(&id) {
+					match self.streams.remove(&id) { Some(stream) => {
 						Self::close_stream(stream, close);
 						let pkt = Packet {
 							stream_id: id,
@@ -322,9 +322,9 @@ impl<R: TransportRead, W: TransportWrite, M: MultiplexorActor<W>> MuxInner<R, W,
 						self.tx.unlock();
 
 						let _ = channel.send(ret);
-					} else {
+					} _ => {
 						let _ = channel.send(Err(WispError::InvalidStreamId(id)));
-					}
+					}}
 				}
 				WsEvent::EndFut(x) => {
 					if let Some(reason) = x {

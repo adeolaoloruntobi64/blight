@@ -25,7 +25,8 @@ pub struct WispServerInfo {
     pub v2_use_motd: Option<String>,
     pub v2_use_cert: Vec<VerifyKey>,
     pub supported_versions: Vec<WispServerVersion>,
-    pub max_message_size: usize
+    pub max_message_size: usize,
+    pub buffer_size: u32
 }
 
 pub struct WispServerConfig {

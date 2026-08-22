@@ -119,12 +119,11 @@ pub fn bare_response_from_res(
         match bare_info.version {
             BareServerVersion::V1 => insert("x-bare-headers", &xb_headers, nw),
             BareServerVersion::V2 |
-            BareServerVersion::V3 => if let Some(split) = 
-                util::splitjoin::try_split_x_bare_headers_str(&xb_headers) {
+            BareServerVersion::V3 => match util::splitjoin::try_split_x_bare_headers_str(&xb_headers) { Some(split) => {
                     nw.extend(split);
-                } else {
+                } _ => {
                     insert("x-bare-headers", &xb_headers, nw);
-                }
+                }}
         };
     }
     

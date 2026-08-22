@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022", "WebWorker"],
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": ["vite/client"],
+    "typeRoots": ["./node_modules/@types", "./node_modules",  "src/blight/types"]
+  },
+  "include": [
+    "src/**/*.ts", 
+    "src/**/*.tsx", 
+    "src/**/*.jsx", 
+    "src/global.d.ts", 
+    "src/blight/types/**/*.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

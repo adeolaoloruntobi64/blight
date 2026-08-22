@@ -48,7 +48,7 @@ async fn server() {
         let mut options = ResolverOpts::default();
         // We don't want sending 2 requests at the same time, because
         // that wastes gb limit, although not much, it might add up idk
-        options.num_concurrent_reqs = 1;
+        options.num_concurrent_reqs = 4;
         options.cache_size = 1024;
         options.ip_strategy = LookupIpStrategy::Ipv4thenIpv6;
         let resolver = TokioResolver::builder_with_config(
@@ -65,7 +65,7 @@ async fn server() {
                 website: "https://www.example.com/".into()
             },
             project: ProjectInfo {
-                name: "Conduit".into(),
+                name: "Blight".into(),
                 description: "Rust TOMP implementation".into(),
                 email: "None".into(),
                 website: "None".into(),
@@ -92,7 +92,8 @@ async fn server() {
             v2_use_motd: None,
             v2_use_cert: Vec::new(),
             supported_versions: vec![WispServerVersion::V1, WispServerVersion::V2],
-            max_message_size: settings.ws_max_message_size
+            max_message_size: settings.ws_max_message_size,
+            buffer_size: 1024
         },
         dns: dns.clone()
     };

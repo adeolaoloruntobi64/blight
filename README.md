@@ -1,6 +1,6 @@
-# Multiconduit
+# Blight
 
-Multiconduit is an experimental Rust and JavaScript workspace for multi-protocol proxy services, transport tooling, and a small adblock/WASM integration layer.
+Blight is an experimental Rust and JavaScript workspace for multi-protocol proxy services, transport tooling, and a small adblock/WASM integration layer.
 
 ## Background
 
@@ -12,9 +12,9 @@ Over time the codebase grew, adding adblocking, transport support, and frontend-
 
 The repository contains a Rust workspace and a separate JavaScript workspace.
 
-- `server/`: a proxy server binary named `Conduit` that exposes multiple proxy endpoints and serves optional static frontend assets.
+- `server/`: a proxy server binary named `blight` that exposes multiple proxy endpoints and serves optional static frontend assets.
 - `crates/`: reusable Rust crates for proxy transports, shared utilities, caching, and client support.
-- `js/`: a JavaScript workspace with transport packages such as a Bare transport implementation and related client tooling.
+- `packages/`: a JavaScript workspace with transport packages such as a Bare transport implementation and related client tooling.
 
 ## What it includes
 
@@ -25,8 +25,7 @@ The repository contains a Rust workspace and a separate JavaScript workspace.
 - A static client service for serving web frontend assets from a local directory.
 - Shared utilities in `crates/common` for DNS resolving and IP handling.
 - A Wisp multiplexing library in `crates/wisp-mux`.
-- An adblock engine integration under `crates/adblock-js` using Rust, WASM, and JavaScript.
-- A JavaScript/Bundled transport package in `js/T-BareTransport` implementing Bare proxy transport.
+- An adblock engine integration under `crates/vanguard` using Rust, WASM, and JavaScript.
 
 ## Workspace layout
 
@@ -39,14 +38,14 @@ The repository contains a Rust workspace and a separate JavaScript workspace.
 - `crates/wisp-mux/`: reusable Wisp multiplexing library
 - `crates/wisp-tower-axum/`: Wisp server adapter for Axum
 - `crates/wsproxy-tower-axum/`: WSProxy server adapter for Axum
-- `crates/adblock-js/`: adblock engine bindings for Rust/WASM/JS
+- `crates/vanguard/`: adblock engine bindings for Rust/WASM/JS
 - `crates/tower-etag-cache-0.1.0/`: cache provider utilities for ETags
 
 ### JavaScript workspace
 
-- `js/`: workspace root
-- `js/T-BareTransport/`: Bare transport package
-- `js/T-Vanguard/`, `js/T-VanguardEngine/`, and other transport-related packages for client-side tooling
+- `packages/`: workspace root
+- `packages/vanguard/`: Vanguard compiled to wasm for use in js
+- `client/`: The frontend (WIP)
 
 ## Usage
 
@@ -55,7 +54,7 @@ The repository contains a Rust workspace and a separate JavaScript workspace.
 From the repo root:
 
 ```bash
-cargo build --workspace
+cargo build
 ```
 
 ### Run the server
@@ -63,13 +62,13 @@ cargo build --workspace
 From the repo root:
 
 ```bash
-cargo run -p conduit -- --socket 0.0.0.0:3000
+cargo run -p blight -- --socket 0.0.0.0:3000
 ```
 
 ### Common runtime options
 
 ```bash
-cargo run -p conduit -- --socket 0.0.0.0:3000 \
+cargo run -p blight -- --socket 0.0.0.0:3000 \
   --frontend-files-dir ./client/ \
   --bare-prefix /bare/ \
   --wisp-prefix /wisp/ \
@@ -94,33 +93,18 @@ cargo run -p conduit -- --socket 0.0.0.0:3000 \
 - `--ws-max-message-size`, `-m`: websocket max message size in bytes (default: `1048576`)
 - `--auth-path`, `-a`: path to a username/password file for Wisp auth
 
-## JavaScript workspace
-
-Install dependencies from the `js/` folder:
-
-```bash
-cd js
-npm install
-```
-
-Build specific JS packages as needed, for example:
-
-```bash
-npm --workspace=./T-BareTransport run build
-```
-
 ## Notes
 
 - This repository is experimental and not intended as a polished production deployment.
 - The Rust server is designed to expose multiple proxy transports from a single process.
-- The default frontend path is `./client/`, but the repository does not include a complete production frontend by default.
+- The default frontend path is `./client/`, but the repository does not include a complete production frontend by default (WIP).
 
 ## Status
 
 - `Bare` / `TOMP`: v1, v2, v3 supported
 - `Wisp`: v1, v2 supported
 - `Wsproxy`: v1 supported
-- `Adblock` engine: present as Rust/WASM/JS integration
+- `Vanguard` engine: present as Rust/WASM/JS integration
 - `Static client`: supported through `static-client-tower-axum`
 
 ## References
@@ -128,3 +112,5 @@ npm --workspace=./T-BareTransport run build
 - https://github.com/MercuryWorkshop
 - https://github.com/titaniumnetwork-dev
 - https://github.com/tomphttp/specifications
+- https://github.com/MercuryWorkshop/scramjet
+- https://docs.crllect.dev/

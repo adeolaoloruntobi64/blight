@@ -124,7 +124,7 @@ pub async fn proxy(
         return
     };
 
-    let sockets = dnsres.collect::<Vec<_>>();
+    let sockets = dnsres.addrs;
 
     if let Some(ip) = sockets.iter().map(|x| x.ip()).find(ip::ip_is_not_global) {
         axum_session.send(AxumMessage::Close(Some(CloseFrame {

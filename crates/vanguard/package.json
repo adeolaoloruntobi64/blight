@@ -1,0 +1,17 @@
+{
+    "name": "vanguard",
+    "version": "0.1.0",
+    "files": [
+      "vanguard.js",
+      "vanguard.d.ts",
+      "vanguard_bg.wasm",
+      "vanguard_bg.wasm.d.ts"
+    ],
+    "scripts": {
+      "build": "node build.js",
+      "build-dev": "node build.js --dev"
+    },
+    "type": "module",
+    "main": "vanguard.js",
+    "types": "vanguard.d.ts"
+  }

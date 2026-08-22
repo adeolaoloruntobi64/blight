@@ -1,0 +1,20 @@
+[package]
+name = "tokio-websockets-axum"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+http2 = ["hyper/http2"]
+
+[dependencies]
+axum-core = { version = "0.5.6" }
+base64 = { version = "0.22.1" }
+bytes = { version = "1.10.0" }
+futures-util = { version = "0.3.31", features = ["sink"] }
+http = { version = "1.2.0" }
+hyper = { version = "1.5.2" }
+hyper-util = { version = "0.1.10", features = ["tokio"] }
+sha1_smol = { version = "1.0.1" }
+tokio = { version = "1.43.0", features = ["full"] }
+tokio-websockets = { version = "0.13.3", features = ["server", "sha1_smol"] }
