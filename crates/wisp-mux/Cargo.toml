@@ -6,7 +6,7 @@ description = "A library for easily creating Wisp servers and clients."
 homepage = "https://github.com/MercuryWorkshop/epoxy-tls/tree/multiplexed/wisp"
 repository = "https://github.com/MercuryWorkshop/epoxy-tls/tree/multiplexed/wisp"
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 keywords = ["websocket", "wisp", "multiplexor", "multiplexing", "stream"]
 categories = ["network-programming", "asynchronous", "web-programming::websocket", "wasm"]
 

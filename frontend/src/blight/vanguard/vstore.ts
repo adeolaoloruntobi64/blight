@@ -15,19 +15,15 @@ const SIMPLE_KEYS = [
 
 type SimpleKey = (typeof SIMPLE_KEYS)[number];
 
-//const DEFAULT_SELECTED_FILTERS = [
-//    "ublock-filters", "ublock-badware", "ublock-privacy", "ublock-quick-fixes", "ublock-unbreak",
-//    "easylist", "adguard-generic", "adguard-mobile", "easyprivacy", "urlhaus-1", "plowe-0", "ublock-annoyances",
-//];
-
 const DEFAULT_SELECTED_FILTERS = [
-    "ublock-filters"
+    "ublock-filters", "ublock-badware", "ublock-privacy", "ublock-quick-fixes", "ublock-unbreak",
+    "easylist", "adguard-generic", "adguard-mobile", "easyprivacy", "urlhaus-1", "plowe-0", "ublock-annoyances",
 ];
-
 
 export class VanguardStore {
     private readonly store: IDBStore;
     private readonly fetch: typeof window.fetch;
+    private readonly pxfetch: typeof window.fetch;
 
     availableFilters: Record<string, any> = {};
     importedLists: string[] = [];
@@ -41,21 +37,29 @@ export class VanguardStore {
     badlistsJsonEntry: Record<string, any> = {};
     assembleJson: Record<string, any> = {};
 
-    constructor(fetchFn: typeof window.fetch, storeName: string, storeVersion: number, objectStore: string) {
-        this.fetch = (input, url) => fetchFn(input, url);
+    constructor(
+        fetch: typeof window.fetch,
+        pxfetch: typeof window.fetch,
+        storeName: string,
+        storeVersion: number,
+        objectStore: string
+    ) {
+        this.fetch = (input, url) => fetch(input, url);
+        this.pxfetch = (input, url) => pxfetch(input, url);
         this.store = new IDBStore(storeName, storeVersion, objectStore);
     }
 
     getStore(): IDBStore { return this.store; }
 
     static async init(
-        fetchFn: typeof window.fetch,
+        fetch: typeof window.fetch,
+        pxfetch: typeof window.fetch,
         storeName: string,
         storeVersion: number,
         objectStore: string,
         assetsPath: string
     ): Promise<VanguardStore> {
-        const data = new VanguardStore(fetchFn, storeName, storeVersion, objectStore);
+        const data = new VanguardStore(fetch, pxfetch, storeName, storeVersion, objectStore);
 
         if (await data.getFlag("__initialized")) {
             await data.loadAll();
@@ -103,9 +107,9 @@ export class VanguardStore {
 
     async loadAll(): Promise<void> {
         const values = await this.store.getMany(SIMPLE_KEYS as unknown as string[]);
-        for (const key of SIMPLE_KEYS) {
-            if (values[key] !== undefined) (this as any)[key] = values[key];
-        }
+        for (const key of SIMPLE_KEYS)
+            if (values[key] !== undefined) 
+                (this as any)[key] = values[key];
     }
 
     async save<K extends SimpleKey>(key: K): Promise<void> {
@@ -113,7 +117,8 @@ export class VanguardStore {
     }
     async load<K extends SimpleKey>(key: K): Promise<void> {
         const value = await this.store.get<VanguardStore[K]>(key);
-        if (value !== undefined) (this[key] as VanguardStore[K]) = value;
+        if (value !== undefined)
+            (this[key] as VanguardStore[K]) = value;
     }
 
     async increment(key: string, delta: number): Promise<number> {
@@ -152,7 +157,11 @@ export class VanguardStore {
                 try {
                     contents = await this.loadFilterList(name);
                 } catch {
-                    contents = await (await this.fetch(this.availableFilters[name].contentURL)).text();
+                    // contentUrl is either a string or array of strings. We want the first element
+                    // of the array if it is an array, or just the string itself if it is a string.
+                    const filterUrl = [this.availableFilters[name].contentURL].flat()[0];
+                    // we need to fetch with the transport, else we get cors errors
+                    contents = await (await this.pxfetch(filterUrl)).text();
                     void this.saveFilterList(name, contents); // deferred
                 }
                 return { name, contents };

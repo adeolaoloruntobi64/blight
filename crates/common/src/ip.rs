@@ -1,4 +1,9 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+
+
+pub const UDP_BIND_IPV4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
+pub const UDP_BIND_IPV6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0);
 
 /// Implementation of the unstable IpAddr::is_global
 pub const fn ip_is_global(ipaddr: &IpAddr) -> bool {

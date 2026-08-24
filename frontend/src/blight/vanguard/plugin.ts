@@ -43,24 +43,42 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
     }
 
     #applyRequestWithExclude(context: FetchRequestContext, props: FetchRequestProps) {
-        const match = this.#holder.exclude.matchHost(props.url.toString());
+        const match = this.#holder.exclude.matchHost(props.url.hostname);
         if (match) return;
-
+        const destination = mapDestination(context.parsed.destination);
         const req = new VanguardRequest(
             props.url.href,
             context.parsed.clientUrl?.href ?? props.url.href,
-            context.parsed.destination ? mapDestination(context.parsed.destination) : "other",
+            destination,
             props.init.method ?? "GET"
         );
         const result = this.#holder.engine.check_network_request(req);
-        const shouldBlock = result.filter !== undefined && (result.important || result.exception === undefined);
-
-        if (shouldBlock) {
-            props.earlyResponse = new Response("", { status: 204 });
-            this.#stats.recordBlocked();
-        } else {
+        console.log(req, result);
+        if (result.filter === undefined) {
             this.#stats.recordAllowed();
+            return;
         }
+        if (result.important) {
+            this.#stats.recordBlocked();
+            props.earlyResponse = new Response(null, { status: 204 });
+            return;
+        }
+        if (result.exception !== undefined) {
+            this.#stats.recordAllowed();
+            return;
+        }
+        if (result.redirect) {
+            this.#stats.recordAllowed();
+            props.earlyResponse = this.#dataUrlToResponse(result.redirect);
+            return;
+        }
+        if (result.rewritten_url) {
+            this.#stats.recordAllowed();
+            props.url = new URL(result.rewritten_url);
+            return;
+        }
+        this.#stats.recordBlocked();
+        props.earlyResponse = new Response(null, { status: 204 });
     }
 
     #applyCspDirectives(context: FetchPreresponseContext, props: FetchPreresponseProps) {
@@ -99,7 +117,7 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
             return;
         }
         const classes = [...new Set(Array.from(doc.querySelectorAll("[class]")).flatMap(
-            (el) => el.className.split(/\s+/).filter(Boolean)
+            (el) => [...el.classList]
         ))];
         const ids = [...new Set(Array.from(doc.querySelectorAll("[id]")).map((el) => el.id))];
         const extra = this.#holder.engine.hidden_class_id_selectors(classes, ids, resources.exceptions);
@@ -119,17 +137,20 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
     #findHead(handler: DomHandler): Element | undefined {
         return DomUtils.findOne((el) => el.type === "tag" && el.name === "head", handler.dom, true) as Element | undefined;
     }
+    
     #injectStyle(handler: DomHandler, selectors: string[]) {
         if (selectors.length === 0) return;
         const head = this.#findHead(handler);
         if (!head) return;
         DomUtils.appendChild(head, new Element("style", {}, [new Text(`${selectors.join(", ")} { display: none !important; }`)]));
     }
+
     #injectScript(handler: DomHandler, script: string) {
         const head = this.#findHead(handler);
         if (!head) return;
         DomUtils.prependChild(head, new Element("script", {}, [new Text(script)]));
     }
+
     #collectClassesAndIds(handler: DomHandler): { classes: string[]; ids: string[] } {
         const classes = new Set<string>(), ids = new Set<string>();
         for (const el of DomUtils.findAll(() => true, handler.dom) as Element[]) {
@@ -137,5 +158,15 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
             if (el.attribs?.id) ids.add(el.attribs.id);
         }
         return { classes: [...classes], ids: [...ids] };
+    }
+
+    #dataUrlToResponse(dataUrl: string): Response {
+        const [meta, data] = dataUrl.slice(5).split(",", 2); // strip "data:"
+        const isBase64 = meta.endsWith(";base64");
+        const mime = meta.replace(";base64", "") || "text/plain";
+        const bytes = isBase64
+            ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
+            : new TextEncoder().encode(decodeURIComponent(data));
+        return new Response(bytes, { headers: { "content-type": mime } });
     }
 }

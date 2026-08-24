@@ -6,6 +6,7 @@ import { VanguardEngine, VanguardExclusionStore } from "vanguard";
 import type { ControllerLike } from "./types/scramjet-hooks";
 import EpoxyTransport from "@mercuryworkshop/epoxy-transport";
 import { CONFIG } from "./config";
+import { RawHeaders } from "@mercuryworkshop/proxy-transports";
 
 export interface BlightContext {
     controller: ControllerLike;
@@ -49,11 +50,30 @@ async function doBoot(): Promise<BlightContext> {
     }
     const worker = navigator.serviceWorker.controller ?? registration.active;
     if (!worker) throw new Error("No active service worker after registration");
+
     const wispUrl = new URL("/wisp/v1/", location.href);
     wispUrl.protocol = wispUrl.protocol === "https:" ? "wss:" : "ws:";
+
+    const transport = new EpoxyTransport({ wisp_v2: false, udp_extension_required: false, wisp: wispUrl.toString() });
+    const pxfetch = async (input: URL | RequestInfo, init?: RequestInit) => {
+        const req = new Request(input, init);
+        const resp = await transport.request(
+            new URL(req.url),
+            req.method,
+            req.body,
+            req.headers as any,
+            req.signal
+        );
+        const rinit = {
+            headers: resp.headers,
+            status: resp.status,
+            statusText: resp.statusText,
+        };
+        return new Response(resp.body, rinit);
+    }
     const controller = new globalThis.$scramjetController.Controller({
         serviceworker: worker,
-        transport: new EpoxyTransport({ wisp_v2: false, udp_extension_required: false, wisp: wispUrl.toString() }),
+        transport,
         config: {
             prefix: CONFIG.prefix,
             scramjetPath: CONFIG.scramjet,
@@ -61,17 +81,19 @@ async function doBoot(): Promise<BlightContext> {
             injectPath: CONFIG.scramjetControllerInject,
         },
     });
-
-    await controller.wait();
+    await Promise.all([transport.init(), controller.wait()]);
 
     const sync = new VanguardSyncChannel();
-    const vstore = await VanguardStore.init(fetch, "__vanguard", 1, "items", CONFIG.assetsJson);
+    const vstore = await VanguardStore.init(fetch, pxfetch, "__vanguard", 1, "items", CONFIG.assetsJson);
     const stats = new StatsTracker(vstore.getStore(), sync);
     await stats.init();
 
     const { engine, exclude } = await buildEngineFromData(vstore);
     const holder = new VanguardHandle(engine, exclude);
 
+    // Wanted to see if I could make the sync channel receive it's own annoucement
+    // but a channel instance does not receive it's own post by design. So a small
+    // bit of code duplication is needed.
     sync.onConfigChanged(async () => {
         await vstore.loadAll();
         const rebuilt = await buildEngineFromData(vstore);
@@ -82,10 +104,10 @@ async function doBoot(): Promise<BlightContext> {
     async function updateFilterLists(newLists: string[]) {
         vstore.selectedFilters = newLists;
         await vstore.save("selectedFilters");
+        sync.announceConfigChanged();
         const rebuilt = await buildEngineFromData(vstore);
         holder.replaceEngine(rebuilt.engine);
         holder.replaceExclude(rebuilt.exclude);
-        sync.announceConfigChanged();
     }
 
     return { controller, vstore, holder, stats, sync, updateFilterLists };

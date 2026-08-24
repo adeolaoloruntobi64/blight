@@ -1,7 +1,7 @@
 use std::{error::Error, net::SocketAddr};
 
 use axum::{body::Body, extract::{ConnectInfo, OriginalUri, Path, Query, State, rejection::QueryRejection}, http::{StatusCode, uri::Authority}, response::Response};
-use common::ip;
+use common::ip::{self, UDP_BIND_IPV4, UDP_BIND_IPV6};
 use futures_util::StreamExt;
 use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader} ,net::{TcpStream, UdpSocket}};
 use tokio_websockets::{CloseCode, Limits, Message};
@@ -127,8 +127,12 @@ async fn handle_wsproxy(
     let close = if udp {
         async {
             let stream = async {
+                // Hypothetically, theoretically, in a parallel universe, considering the absolute worst case scenario,
+                // bind() can fail per address type (work for ipv6 but not ipv4). Try each candidate until one
+                // binds. connect() itself doesn't really "fail", or at least not meaningfully. It basically always
+                // succeeds
                 for socket in &sockets {
-                    let bindport = if socket.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+                    let bindport = if socket.is_ipv4() { UDP_BIND_IPV4 } else { UDP_BIND_IPV6 };
                     let Ok(udp) = UdpSocket::bind(bindport).await else { continue };
                     let Ok(()) = udp.connect(socket).await else { continue };
                     return Some(udp);
@@ -142,7 +146,14 @@ async fn handle_wsproxy(
                     err: Some(format!("Could not connect to any of {sockets:?}").into()),
                 });
             };
-            let mut buffer = vec![0u8; 65507];
+            // https://oneuptime.com/blog/post/2026-03-20-ipv6-udp-jumbograms/view
+            // 65507 for ipv6, 65527 for ipv6
+            let size = if let Ok(addr) = stream.local_addr() && addr.is_ipv4() {
+                65507
+            } else {
+                65527
+            };
+            let mut buffer = vec![0u8; size];
             let ret = async {
                 loop {
                     tokio::select! {

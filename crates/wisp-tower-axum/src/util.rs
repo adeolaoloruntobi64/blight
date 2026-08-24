@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::extract::{ConnectInfo, State};
-use common::ip;
+use common::ip::{self, UDP_BIND_IPV4, UDP_BIND_IPV6};
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, FuturesAsyncWriteCompatExt};
@@ -144,22 +144,39 @@ pub async fn proxy(
                     let closer = stream.get_close_handle();
                     let (mut read, write) = stream.into_split();
                     let mut write = write.into_async_write().compat_write();
-                    let bindport = if sockets[0].is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
-                    let udp = match UdpSocket::bind(bindport).await {
-                        Ok(udp) if udp.connect(sockets.as_slice()).await.is_ok() => udp, 
-                        _ => return closer.close(CloseReason::ServerStreamConnectionRefused).await,
+                    
+                    let stream = async {
+                        // Hypothetically, theoretically, in a parallel universe, considering the absolute worst case scenario,
+                        // bind() can fail per address type (work for ipv6 but not ipv4). Try each candidate until one
+                        // binds. connect() itself doesn't really "fail", or at least not meaningfully. It basically always
+                        // succeeds
+                        for socket in &sockets {
+                            let bindport = if socket.is_ipv4() { UDP_BIND_IPV4 } else { UDP_BIND_IPV6 };
+                            let Ok(udp) = UdpSocket::bind(bindport).await else { continue };
+                            let Ok(()) = udp.connect(socket).await else { continue };
+                            return Some(udp);
+                        }
+                        None
+                    }.await;
+                    let Some(stream) = stream else {
+                        return closer.close(CloseReason::ServerStreamConnectionRefused).await;
                     };
                     // https://oneuptime.com/blog/post/2026-03-20-ipv6-udp-jumbograms/view
                     // 65507 for ipv6, 65527 for ipv6
-                    let mut buf = vec![0u8; if sockets[0].is_ipv4() { 65507 } else { 65527 }];
+                    let size = if let Ok(addr) = stream.local_addr() && addr.is_ipv4() {
+                        65507
+                    } else {
+                        65527
+                    };
+                    let mut buf = vec![0u8; size];
                     let ret= async {
                         loop {
                             tokio::select! {
-                                n = udp.recv(&mut buf) => {
+                                n = stream.recv(&mut buf) => {
                                     write.write_all(&buf[..n?]).await?;
                                 }
                                 frame = read.next() => match frame {
-                                    Some(Ok(data)) => { udp.send(&data).await?; }
+                                    Some(Ok(data)) => { stream.send(&data).await?; }
                                     Some(Err(e)) => return Err(Error::new(ErrorKind::Other, Box::new(e))),
                                     None => break,
                                 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { VanguardPlugin } from "./vanguard/plugin";
 import type { BlightContext } from "./boot";
-import type { FrameLike, ManagedPluginBaseLike } from "./types/scramjet-hooks";
+import type { FrameLike } from "./types/scramjet-hooks";
 
 export function Tab({ blight, url, active }: { blight: BlightContext; url: string; active: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -11,14 +11,19 @@ export function Tab({ blight, url, active }: { blight: BlightContext; url: strin
     const iframeEl = document.createElement("iframe");
     iframeEl.className = "frame";
     iframeEl.style.cssText = "position:absolute; inset:0; width:100%; height:100%; border:none;";
-    //iframeEl.setAttribute("credentialless", "true");
     iframeEl.setAttribute(
       "sandbox",
       "allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts allow-downloads"
     );
-    $scramjetUtils
     const frame = blight.controller.createFrame(iframeEl, {
-      plugins: [/*new VanguardPlugin(blight.holder, blight.stats)*/],
+      plugins: [
+        new VanguardPlugin(blight.holder, blight.stats),
+        // new $scramjetUtils.UrlWatcherPlugin((url) => setTabUrl(tab.id, url)), think of this
+        new $scramjetUtils.CatchEscapedLinksPlugin((url) => new URL(location.href)), // temporary
+        new $scramjetUtils.HttpCachePlugin(),
+        new $scramjetUtils.EventHandlerPlugin(),
+        // new $scramjetUtils.LinkHandlerPlugin((url) => openNewTab(url)), also think of this
+      ],
     });
     frameRef.current = frame;
     containerRef.current?.appendChild(iframeEl);
