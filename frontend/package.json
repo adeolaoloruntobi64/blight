@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mercuryworkshop/epoxy-transport": "^3.0.1",
     "@mercuryworkshop/proxy-transports": "^1.0.2",
     "@mercuryworkshop/scramjet": "2.0.67-alpha.2",
     "@mercuryworkshop/scramjet-controller": "0.0.14",
@@ -24,6 +23,7 @@
     "react-router": "^8.3.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
+    "transports": "file:../packages/transports",
     "vanguard": "file:../packages/vanguard"
   },
   "devDependencies": {

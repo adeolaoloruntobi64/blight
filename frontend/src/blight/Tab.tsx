@@ -17,7 +17,7 @@ export function Tab({ blight, url, active }: { blight: BlightContext; url: strin
     );
     const frame = blight.controller.createFrame(iframeEl, {
       plugins: [
-        new VanguardPlugin(blight.holder, blight.stats),
+        new VanguardPlugin(blight.VanguardRequest, blight.holder, blight.stats),
         // new $scramjetUtils.UrlWatcherPlugin((url) => setTabUrl(tab.id, url)), think of this
         new $scramjetUtils.CatchEscapedLinksPlugin((url) => new URL(location.href)), // temporary
         new $scramjetUtils.HttpCachePlugin(),

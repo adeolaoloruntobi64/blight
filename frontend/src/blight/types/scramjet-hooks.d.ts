@@ -242,9 +242,11 @@ export declare abstract class ManagedPluginBaseLike extends PluginBaseLike {
 
 export interface ControllerConfig {
     prefix: string;
-    scramjetPath: string;
-    wasmPath: string;
-    injectPath: string;
+	scramjetPath: string;
+	injectPath: string;
+	wasmPath: string;
+	virtualWasmPath: string;
+	codec: Record<"encode" | "decode", (input: string) => string>;
 }
 
 export interface ControllerOptions {

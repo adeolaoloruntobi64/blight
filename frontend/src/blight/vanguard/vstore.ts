@@ -1,11 +1,23 @@
 import { IDBStore } from "./idb";
 import { compressBlob, decompressBlob } from "./compress";
 import { filterListMetadataToSendable, type SendableFilterListMetadata } from "./convert";
-import {
-    VanguardFilterSet, VanguardParseOptions, VanguardResourceAssemblerInfo, VanguardInlineWebAcessibleResources,
-    assemble_resources,
-    VanguardAssembledResources,
+import type {
+  VanguardFilterSet as VanguardFilterSetClass,
+  VanguardParseOptions as VanguardParseOptionsClass,
+  VanguardResourceAssemblerInfo as VanguardResourceAssemblerInfoClass,
+  VanguardInlineWebAcessibleResources as VanguardInlineWebAcessibleResourcesClass,
+  VanguardAssembledResources as VanguardAssembledResourcesClass,
+  assemble_resources as assemble_resources_function
 } from "vanguard";
+
+export interface VanguardTypes {
+  VanguardFilterSet: typeof VanguardFilterSetClass;
+  VanguardParseOptions: typeof VanguardParseOptionsClass;
+  VanguardResourceAssemblerInfo: typeof VanguardResourceAssemblerInfoClass;
+  VanguardInlineWebAcessibleResources: typeof VanguardInlineWebAcessibleResourcesClass;
+  VanguardAssembledResources: typeof VanguardAssembledResourcesClass;
+  assemble_resources: typeof assemble_resources_function;
+}
 
 const SIMPLE_KEYS = [
     "availableFilters", "importedLists", "userExclusions", "selectedFilters",
@@ -25,6 +37,7 @@ export class VanguardStore {
     private readonly fetch: typeof window.fetch;
     private readonly pxfetch: typeof window.fetch;
 
+    types: VanguardTypes;
     availableFilters: Record<string, any> = {};
     importedLists: string[] = [];
     userExclusions = "";
@@ -38,28 +51,27 @@ export class VanguardStore {
     assembleJson: Record<string, any> = {};
 
     constructor(
+        types: VanguardTypes,
         fetch: typeof window.fetch,
         pxfetch: typeof window.fetch,
-        storeName: string,
-        storeVersion: number,
-        objectStore: string
+        store: IDBStore
     ) {
+        this.types = types;
         this.fetch = (input, url) => fetch(input, url);
         this.pxfetch = (input, url) => pxfetch(input, url);
-        this.store = new IDBStore(storeName, storeVersion, objectStore);
+        this.store = store;
     }
 
     getStore(): IDBStore { return this.store; }
 
     static async init(
+        types: VanguardTypes,
         fetch: typeof window.fetch,
         pxfetch: typeof window.fetch,
-        storeName: string,
-        storeVersion: number,
-        objectStore: string,
+        store: IDBStore,
         assetsPath: string
     ): Promise<VanguardStore> {
-        const data = new VanguardStore(fetch, pxfetch, storeName, storeVersion, objectStore);
+        const data = new VanguardStore(types, fetch, pxfetch, store);
 
         if (await data.getFlag("__initialized")) {
             await data.loadAll();
@@ -150,7 +162,7 @@ export class VanguardStore {
         await this.store.put(`cache/meta/${name}`, meta);
     }
 
-    async assembleFilterSet(): Promise<VanguardFilterSet> {
+    async assembleFilterSet(): Promise<VanguardFilterSetClass> {
         const withContents = await Promise.all(
             this.selectedFilters.map(async (name) => {
                 let contents: string;
@@ -170,16 +182,16 @@ export class VanguardStore {
         return this.assembleFilterSetWithContents(withContents);
     }
 
-    assembleFilterSetWithContents(filterListsWithContents: { name: string; contents: string }[]): VanguardFilterSet {
-        const filterset = new VanguardFilterSet(true);
+    assembleFilterSetWithContents(filterListsWithContents: { name: string; contents: string }[]): VanguardFilterSetClass {
+        const filterset = new this.types.VanguardFilterSet(true);
         for (const { name, contents } of filterListsWithContents) {
-            const meta = filterset.add_filter_list(contents, VanguardParseOptions.default());
+            const meta = filterset.add_filter_list(contents, this.types.VanguardParseOptions.default());
             void this.saveFilterListMetadata(name, filterListMetadataToSendable(meta)); // deferred
         }
         return filterset;
     }
 
-    async collectResources(): Promise<VanguardResourceAssemblerInfo> {
+    async collectResources(): Promise<VanguardResourceAssemblerInfoClass> {
         const rrPath = this.assembleJson["redirect-resources.js"];
         const ssPath = this.assembleJson["scriptlets.js"];
         const webARPaths = Object.entries<string>(this.assembleJson["web_accessible_resources"]);
@@ -203,11 +215,11 @@ export class VanguardStore {
             )
         );
 
-        return new VanguardResourceAssemblerInfo(rr, new VanguardInlineWebAcessibleResources(webAR), ss);
+        return new this.types.VanguardResourceAssemblerInfo(rr, new this.types.VanguardInlineWebAcessibleResources(webAR), ss);
     }
 
-    async assembleResources(): Promise<VanguardAssembledResources> {
-        return assemble_resources(await this.collectResources());
+    async assembleResources(): Promise<VanguardAssembledResourcesClass> {
+        return this.types.assemble_resources(await this.collectResources());
     }
 
     async #loadOrFetchResource(cacheName: string, path: string, decoder: TextDecoder): Promise<string> {

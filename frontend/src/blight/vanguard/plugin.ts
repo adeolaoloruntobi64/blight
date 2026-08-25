@@ -1,5 +1,11 @@
-import { VanguardRequest } from "vanguard";
-import type { FetchPreresponseContext, FetchPreresponseProps, FetchRequestContext, FetchRequestProps, FrameLike } from "../types/scramjet-hooks";
+import type { VanguardRequest as VanguardRequestClass } from "vanguard";
+import type {
+    FetchPreresponseContext,
+    FetchPreresponseProps,
+    FetchRequestContext,
+    FetchRequestProps,
+    FrameLike
+} from "../types/scramjet-hooks";
 import { Element, Text } from "domhandler";
 import * as DomUtils from "domutils";
 import type { DomHandler } from "domhandler";
@@ -12,11 +18,13 @@ const scramjetUtils = () => globalThis.$scramjetUtils;
 export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
     #holder: VanguardHandle;
     #stats: StatsTracker;
+    VanguardRequest: typeof VanguardRequestClass
 
-    constructor(holder: VanguardHandle, stats: StatsTracker) {
+    constructor(VanguardRequest: typeof VanguardRequestClass, holder: VanguardHandle, stats: StatsTracker) {
         super("vanguard", []);
         this.#holder = holder;
         this.#stats = stats;
+        this.VanguardRequest = VanguardRequest;
     }
 
     install(frame: FrameLike) {
@@ -46,14 +54,13 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
         const match = this.#holder.exclude.matchHost(props.url.hostname);
         if (match) return;
         const destination = mapDestination(context.parsed.destination);
-        const req = new VanguardRequest(
+        const req = new this.VanguardRequest(
             props.url.href,
             context.parsed.clientUrl?.href ?? props.url.href,
             destination,
             props.init.method ?? "GET"
         );
         const result = this.#holder.engine.check_network_request(req);
-        console.log(req, result);
         if (result.filter === undefined) {
             this.#stats.recordAllowed();
             return;
@@ -88,7 +95,7 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
         const match = this.#holder.exclude.matchHost(context.parsed.url.toString());
         if (match) return;
 
-        const req = new VanguardRequest(
+        const req = new this.VanguardRequest(
             context.parsed.url.href,
             context.parsed.url.href,
             destination,

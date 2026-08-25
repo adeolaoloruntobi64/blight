@@ -6,9 +6,14 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "workspaces": [
-    "vanguard"
+    "vanguard",
+    "transports"
   ],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
 }

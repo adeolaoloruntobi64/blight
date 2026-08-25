@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { bootBlight, type BlightContext } from "./boot";
 import { Tab } from "./Tab";
-import { initVanguard } from "./vanguard/init";
 
 interface TabState { id: string; url: string }
 
@@ -10,7 +9,7 @@ function BlightApp() {
   const [tabs, setTabs] = useState<TabState[]>([{ id: crypto.randomUUID(), url: "https://www.google.com" }]);
   const [activeId, setActiveId] = useState(tabs[0].id);
 
-  useEffect(() => { initVanguard().then(_ => bootBlight().then(setBlight).catch(console.error)) }, []);
+  useEffect(() => { bootBlight().then(setBlight).catch(console.error) }, []);
 
   if (!blight) return <div>Loading…</div>;
 

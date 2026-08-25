@@ -22,6 +22,8 @@
 
 # npx esbuild src/blight/sw.ts --bundle --outfile=public/sw.js --format=esm --target=es2022
 
+# build transports, copy them over, and copy the wasms too
+
 
 # https://github.com/gorhill/uBlock/tree/master/src/web_accessible_resources
 # https://github.com/gorhill/uBlock/blob/master/src/js/redirect-resources.js

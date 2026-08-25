@@ -1,4 +1,8 @@
-import { VanguardBlockerResult, VanguardUrlSpecificResources, VanguardFilterListMetadata, VanguardExpiresIntervalType } from "vanguard";
+import type {
+    VanguardBlockerResult,
+    VanguardUrlSpecificResources,
+    VanguardFilterListMetadata,
+} from "vanguard";
 
 export type SendableBlockerResult = {
     exception?: string;
@@ -80,9 +84,7 @@ export function filterListMetadataToSendable(l: VanguardFilterListMetadata): Sen
     return {
         ...l.expires && {
             expires: {
-                interval_type:
-                    (l.expires.interval_type === VanguardExpiresIntervalType.Days) ?
-                    SendableExpiresIntervalType.Days : SendableExpiresIntervalType.Hours,
+                interval_type: l.expires.interval_type as any,
                 amount: l.expires.amount
             }
         },

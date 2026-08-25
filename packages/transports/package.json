@@ -1,0 +1,33 @@
+{
+  "name": "transports",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "exports": {
+    "./bare": {
+        "types": "./dist/bare.d.ts",
+        "import": "./dist/bare.js"
+    },
+    "./epoxy": {
+        "types": "./dist/epoxy.d.ts",
+        "import": "./dist/epoxy.js"
+    },
+    "./libcurl": {
+        "types": "./dist/libcurl.d.ts",
+        "import": "./dist/libcurl.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "libcurl.js": "^0.7.4",
+    "@mercuryworkshop/epoxy-tls": "^2.1.19-1",
+    "js-md5": "0.9.2"
+  },
+  "devDependencies": {
+    "@mercuryworkshop/proxy-transports": "^1.0.2"
+  }
+}
