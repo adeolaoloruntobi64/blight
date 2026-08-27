@@ -8,7 +8,7 @@ import { loadScramjetScripts } from './blight/load-scripts'
 
 const BlightApp = lazy(async () => {
   await loadScramjetScripts();
-  return import("./blight/BlightApp");
+  return await import("./blight/BlightApp");
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

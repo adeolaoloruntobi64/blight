@@ -18,12 +18,16 @@ const scramjetUtils = () => globalThis.$scramjetUtils;
 export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
     #holder: VanguardHandle;
     #stats: StatsTracker;
+    #localAllowed: number; // Per-tab stats are fleeting. All-time stats are permanent
+    #localBlocked: number;
     VanguardRequest: typeof VanguardRequestClass
 
     constructor(VanguardRequest: typeof VanguardRequestClass, holder: VanguardHandle, stats: StatsTracker) {
         super("vanguard", []);
         this.#holder = holder;
         this.#stats = stats;
+        this.#localAllowed = 0;
+        this.#localBlocked = 0;
         this.VanguardRequest = VanguardRequest;
     }
 
@@ -62,28 +66,34 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
         );
         const result = this.#holder.engine.check_network_request(req);
         if (result.filter === undefined) {
+            this.#localAllowed++;
             this.#stats.recordAllowed();
             return;
         }
         if (result.important) {
+            this.#localBlocked++;
             this.#stats.recordBlocked();
             props.earlyResponse = new Response(null, { status: 204 });
             return;
         }
         if (result.exception !== undefined) {
+            this.#localAllowed++;
             this.#stats.recordAllowed();
             return;
         }
         if (result.redirect) {
+            this.#localAllowed++;
             this.#stats.recordAllowed();
             props.earlyResponse = this.#dataUrlToResponse(result.redirect);
             return;
         }
         if (result.rewritten_url) {
+            this.#localAllowed++;
             this.#stats.recordAllowed();
             props.url = new URL(result.rewritten_url);
             return;
         }
+        this.#localBlocked++;
         this.#stats.recordBlocked();
         props.earlyResponse = new Response(null, { status: 204 });
     }

@@ -20,7 +20,7 @@
 
 # cp ../packages/vanguard/vanguard_bg.wasm public/deps/blight/
 
-# npx esbuild src/blight/sw.ts --bundle --outfile=public/sw.js --format=esm --target=es2022
+# npx esbuild src/blight/sw.ts --bundle --outfile=public/blight/sw.js --format=esm --target=es2022
 
 # build transports, copy them over, and copy the wasms too
 

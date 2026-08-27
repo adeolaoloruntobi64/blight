@@ -8,6 +8,8 @@ import { VanguardSyncChannel } from "./vanguard/sync";
 import { VanguardStore } from "./vanguard/vstore";
 import { StatsTracker } from "./vanguard/stats";
 import { VanguardHandle } from "./vanguard/handle";
+import { getTransportOptions, setTransportOptions } from "./transports/options";
+import { TRANSPORT_DEFAULTS } from "./transports/defaults";
 
 // To get around vite complaining about importing from public/
 const import2 = new Function('path', 'return import(path)');
@@ -120,40 +122,30 @@ export async function createScramjetController(worker: ServiceWorker, transport:
 
 async function createBareTransport(store: IDBStore) {
     const { default: BareTransport } = await import2(CONFIG.bare) as typeof import ("transports/bare");
-    let options = await store.get<BareOptions>("bare-options");
+    let options = await getTransportOptions<BareOptions>(store, "bare");
     if (!options) {
-        options = {
-            version: 3,
-            endpoint: CONFIG.bareV3Url,
-        };
-        await store.put("bare-options", options);
+        options = TRANSPORT_DEFAULTS.bare as any;
+        await setTransportOptions<BareOptions>(store, "bare", options);
     }
     return new BareTransport(options);
 }
 
 async function createEpoxyTransport(store: IDBStore) {
     const { default: EpoxyTransport } = await import2(CONFIG.epoxy) as typeof import("transports/epoxy");
-    let options = await store.get<EpoxyOptions>("epoxy-options");
+    let options = await getTransportOptions<EpoxyOptions>(store, "epoxy");
     if (!options) {
-        options = {
-            wisp_v2: false,
-            wisp: CONFIG.wispV1Url,
-            wasm: CONFIG.epoxyWasm
-        };
-        await store.put("epoxy-options", options);
+        options = TRANSPORT_DEFAULTS.epoxy as any;
+        await setTransportOptions<EpoxyOptions>(store, "epoxy", options);
     }
     return new EpoxyTransport(options);
 }
 
 async function createLibcurlTransport(store: IDBStore) {
     const { default: LibcurlTransport } = await import2(CONFIG.libcurl) as typeof import("transports/libcurl");
-    let options = await store.get<LibcurlTransportOptions>("libcurl-options");
+    let options = await getTransportOptions<LibcurlTransportOptions>(store, "libcurl");
     if (!options) {
-        options = {
-            websocket: CONFIG.wsproxyUrl,
-            wasm: CONFIG.epoxyWasm
-        };
-        await store.put("libcurl-options", options);
+        options = TRANSPORT_DEFAULTS.libcurl as any;
+        await setTransportOptions<LibcurlTransportOptions>(store, "libcurl", options);
     }
     return new LibcurlTransport(options);
 }

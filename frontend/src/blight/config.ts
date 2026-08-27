@@ -25,8 +25,9 @@ export const CONFIG = {
 
     scramjet: "/deps/blight/scramjet/scramjet.js",
     scramjetWasm: "/deps/blight/scramjet/scramjet.wasm",
-    scramjetControllerApi: "/deps/blight/scramjet/controller.api.js",
     scramjetUtils: "/deps/blight/scramjet/scramjet-utils.js",
+    scramjetControlerSw: "/deps/blight/scramjet/controller.sw.js",
+    scramjetControllerApi: "/deps/blight/scramjet/controller.api.js",
     scramjetControllerInject: "/deps/blight/scramjet/controller.inject.js",
 
     vanguard: "/deps/blight/vanguard/vanguard.js",
