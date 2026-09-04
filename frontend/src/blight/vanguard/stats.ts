@@ -69,6 +69,6 @@ export class StatsTracker {
             this.#totalBlocked = newBlocked;
             this.#totalAllowed = newAllowed;
             this.sync.announceStatsUpdated({ blocked: newBlocked, allowed: newAllowed });
-        }, 1000);
+        }, 5000);
     }
 }

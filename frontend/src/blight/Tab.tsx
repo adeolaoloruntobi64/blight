@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef } from "react";
 import { VanguardPlugin } from "./vanguard/plugin";
 import type { BlightContext } from "./boot";
-import type { FrameLike } from "./types/scramjet-hooks";
+import type { FrameLike, HttpCachePlugin } from "./types/scramjet-hooks";
 import { TabMetadataPlugin, TabMetaAnnouncement } from "./tab-meta";
 import { BLIGHT_SETTINGS_URL, isInternalUrl } from "./internal";
 import { SettingsPage } from "./Settings";
@@ -15,6 +15,8 @@ export interface TabHandle {
 
 export type TabParams = {
     blight: BlightContext;
+    /** This is the only plugin which explicity supports 1 instance across multiple frames */
+    httpCache: HttpCachePlugin;
     url: string;
     active: boolean;
     announce: (m: TabMetaAnnouncement) => void;
@@ -46,14 +48,18 @@ export function Tab(params: TabParams) {
         );
         const frame = params.blight.controller.createFrame(iframeEl, {
             plugins: [
-                new VanguardPlugin(params.blight.VanguardRequest, params.blight.holder, params.blight.stats),
-                new TabMetadataPlugin(params.announce),
+                params.httpCache,
                 new $scramjetUtils.UrlWatcherPlugin((url) => params.announce({ url })),
-                new $scramjetUtils.CatchEscapedLinksPlugin((url) => new URL(location.href)), // temporary
-                // Should these be per tab or a singleton? Might be worth thinking about later
-                new $scramjetUtils.HttpCachePlugin(),
+                new $scramjetUtils.CatchEscapedLinksPlugin((url) =>
+				    new URL(`/?goto=${encodeURIComponent(url.href)}`, location.origin)
+                ),
                 new $scramjetUtils.EventHandlerPlugin(),
                 new $scramjetUtils.LinkHandlerPlugin((url) => params.openNewTab(url)),
+                // Wrap around a global because I want per tab stats
+                new VanguardPlugin(
+                    params.blight.VanguardRequest, params.blight.holder, params.blight.stats
+                ),
+                new TabMetadataPlugin(params.announce),
             ],
         });
         frameRef.current = frame;
@@ -71,9 +77,8 @@ export function Tab(params: TabParams) {
         if (frameRef.current) {
              // The wrapper div now controls visibility, so always block
             frameRef.current.element.style.display = "block";
-            if (params.active) {
+            if (params.active) 
                 frameRef.current.element.focus();
-            }
         }
     }, [params.active]);
 

@@ -4,7 +4,7 @@ import type {
     FetchPreresponseProps,
     FetchRequestContext,
     FetchRequestProps,
-    FrameLike
+    FrameLike,
 } from "../types/scramjet-hooks";
 import { Element, Text } from "domhandler";
 import * as DomUtils from "domutils";
@@ -12,7 +12,15 @@ import type { DomHandler } from "domhandler";
 import type { VanguardHandle } from "./handle";
 import type { StatsTracker } from "./stats";
 import { mapDestination } from "./dest";
+import selectMutateContents from "./observer?ts-to-js-str";
 
+const PRE_JS_SUFFIX = "vanguard-pre-js-inject-resources";
+const PRE_CSS_SUFFIX = "vanguard-pre-css-inject-selectors";
+const PRE_JS_CSS_SUFFIX = "vanguard-pre-js-inject-selectors";
+const LIVE_CSS_SUFFIX = "vanguard-live-css-inject-selectors";
+const LIVE_JS_CSS_SUFFIX = "vanguard-live-js-inject-selectors";
+
+const gensfx = () => "-" + crypto.randomUUID(); // to generate a suffix
 const scramjetUtils = () => globalThis.$scramjetUtils;
 
 export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
@@ -20,7 +28,7 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
     #stats: StatsTracker;
     #localAllowed: number; // Per-tab stats are fleeting. All-time stats are permanent
     #localBlocked: number;
-    VanguardRequest: typeof VanguardRequestClass
+    VanguardRequest: typeof VanguardRequestClass;
 
     constructor(VanguardRequest: typeof VanguardRequestClass, holder: VanguardHandle, stats: StatsTracker) {
         super("vanguard", []);
@@ -42,12 +50,11 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
             this.#applyCspDirectives(context, props);
         });
 
-        this.tap(frame.fetchHandler.hooks.rewriter.html.pre, (htmlCtx, htmlProps) => {
-            const url = htmlCtx.meta.base.href;
-            this.#applyCosmeticsPre(htmlCtx.handler, url);
+        this.tap(frame.fetchHandler.hooks.rewriter.html.pre, (context, props) => {
+            this.#applyCosmeticsPre(context.handler, context.meta.base.href);
         });
 
-        this.tap(frame.hooks.init.post, (context) => {
+        this.tap(frame.hooks.init.post, (context, props) => {
             this.tap(context.client.hooks.lifecycle.navigate, (context2, props2) => {
                 this.#applyCosmeticsLive(context.window.document, props2.url);
             });
@@ -107,7 +114,7 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
 
         const req = new this.VanguardRequest(
             context.parsed.url.href,
-            context.parsed.url.href,
+            context.parsed.url.origin,
             destination,
             context.request?.method ?? "GET"
         );
@@ -121,60 +128,104 @@ export class VanguardPlugin extends scramjetUtils().ManagedPlugin {
         );
     }
 
-    #applyCosmeticsLive(doc: Document, url: string) {
-        const resources = this.#holder.engine.url_cosmetic_resources(url);
-        let styleEl = doc.getElementById("__vanguard_hide") as HTMLStyleElement | null;
-        if (!styleEl) {
-            styleEl = doc.createElement("style");
-            styleEl.id = "__vanguard_hide";
-            doc.head.appendChild(styleEl);
-        }
-        if (resources.generichide) {
-            styleEl.textContent = `${resources.hide_selectors.join(", ")} { display:none!important }`;
-            return;
-        }
-        const classes = [...new Set(Array.from(doc.querySelectorAll("[class]")).flatMap(
-            (el) => [...el.classList]
-        ))];
-        const ids = [...new Set(Array.from(doc.querySelectorAll("[id]")).map((el) => el.id))];
-        const extra = this.#holder.engine.hidden_class_id_selectors(classes, ids, resources.exceptions);
-        styleEl.textContent = `${[...resources.hide_selectors, ...extra].join(", ")} { display:none!important }`;
-    }
-
     #applyCosmeticsPre(handler: DomHandler, url: string) {
         const resources = this.#holder.engine.url_cosmetic_resources(url);
-        if (resources.generichide) return this.#injectStyle(handler, resources.hide_selectors);
+        const { urlRules, plainSelectors } = this.#splitUrlSelectors(resources.hide_selectors);
 
-        const { classes, ids } = this.#collectClassesAndIds(handler);
-        const extra = this.#holder.engine.hidden_class_id_selectors(classes, ids, resources.exceptions);
-        this.#injectStyle(handler, [...resources.hide_selectors, ...extra]);
-        if (resources.injected_script) this.#injectScript(handler, resources.injected_script);
+        if (!resources.generichide) {
+            const { classes, ids } = this.#collectClassesAndIds(handler);
+            plainSelectors.push(...this.#holder.engine.hidden_class_id_selectors(classes, ids, resources.exceptions));
+        }
+        // We can use pure CSS selectors for non url-based selectors
+        if (plainSelectors.length > 0)
+            this.#injectStyle(handler, PRE_CSS_SUFFIX + gensfx(), plainSelectors);
+        if (urlRules.length > 0) {
+            // We need JS for url-based rules because scramjet rewrites the url, and we can't
+            // invoke scramjet in the plugin because the url might be relative to the origin,
+            // or absolute, and scramjet adds some other tags to urls.
+            const hstr = `hideSelectors(document,${JSON.stringify(urlRules.join(","))})`;
+            const script = `${selectMutateContents}${hstr}`;
+            this.#injectScript(handler, PRE_JS_CSS_SUFFIX + gensfx(), script);
+        }
+        if (resources.injected_script)
+            this.#injectScript(handler, PRE_JS_SUFFIX + gensfx(), resources.injected_script);
     }
 
-    #findHead(handler: DomHandler): Element | undefined {
-        return DomUtils.findOne((el) => el.type === "tag" && el.name === "head", handler.dom, true) as Element | undefined;
+    #applyCosmeticsLive(doc: Document, url: string) {
+        const resources = this.#holder.engine.url_cosmetic_resources(url);
+        const { urlRules, plainSelectors } = this.#splitUrlSelectors(resources.hide_selectors);
+
+        if (!resources.generichide) {
+            const classes = Array.from(doc.querySelectorAll("[class]")).flatMap((el) => [...el.classList]);
+            const ids = Array.from(doc.querySelectorAll("[id]")).map((el) => el.id);
+            plainSelectors.push(...this.#holder.engine.hidden_class_id_selectors(classes, ids, resources.exceptions));
+        }
+        // We are injecting into a live html document instead of a DomUtils tree
+        if (plainSelectors.length > 0) {
+            const styleEl = doc.createElement("style");
+            styleEl.id = LIVE_CSS_SUFFIX + gensfx();
+            styleEl.textContent = plainSelectors.length ? `${plainSelectors.join(", ")} { display:none!important }` : "";
+            doc.head.prepend(styleEl);
+        }
+        if (urlRules.length > 0) {
+            const scriptEl = doc.createElement("script");
+            scriptEl.id = LIVE_JS_CSS_SUFFIX + gensfx();
+            const hstr = `hideSelectors(document,${JSON.stringify(urlRules.join(","))})`;
+            const script = `${selectMutateContents}${hstr}`;
+            scriptEl.textContent = script;
+            scriptEl.type = "module"
+            doc.head.prepend(scriptEl);
+        }
+    }
+
+    #findHead(handler: DomHandler): Element | null {
+        return DomUtils.findOne((el) => el.type === "tag" && el.name === "head", handler.dom, true);
     }
     
-    #injectStyle(handler: DomHandler, selectors: string[]) {
+    #injectStyle(handler: DomHandler, id: string, selectors: string[]) {
         if (selectors.length === 0) return;
         const head = this.#findHead(handler);
         if (!head) return;
-        DomUtils.appendChild(head, new Element("style", {}, [new Text(`${selectors.join(", ")} { display: none !important; }`)]));
+        // Since I do this in injectScript, might as well do it here
+        const scriptElement = new Element("style", { id });
+        DomUtils.prependChild(scriptElement, new Text(`${selectors.join(", ")} { display: none !important; }`));
+        DomUtils.prependChild(head, scriptElement);
     }
 
-    #injectScript(handler: DomHandler, script: string) {
+    #injectScript(handler: DomHandler, id: string, script: string) {
         const head = this.#findHead(handler);
         if (!head) return;
-        DomUtils.prependChild(head, new Element("script", {}, [new Text(script)]));
+        // It is very, VERY important to assert the parent-child relationship in BOTH directions
+        // Previously, I only prepended the element with a Text child to the head. The problem was,
+        // doing new Element(..., [new Text(...)]) did not set the parent of text to be the element.
+        // This meant when parsing the tree, the parser wouldn't know that the text is for a script,
+        // and it would encode special characters (< & > became &amp; >gt; <lt;) assuming it was plain text.
+        const scriptElement = new Element("script", {id , type: "module" });
+        DomUtils.prependChild(scriptElement, new Text(script));
+        DomUtils.prependChild(head, scriptElement);
     }
 
     #collectClassesAndIds(handler: DomHandler): { classes: string[]; ids: string[] } {
         const classes = new Set<string>(), ids = new Set<string>();
-        for (const el of DomUtils.findAll(() => true, handler.dom) as Element[]) {
+        for (const el of DomUtils.findAll(() => true, handler.dom)) {
             el.attribs?.class?.split(/\s+/).filter(Boolean).forEach((c) => classes.add(c));
-            if (el.attribs?.id) ids.add(el.attribs.id);
+            if (el.attribs?.id)
+                ids.add(el.attribs.id);
         }
         return { classes: [...classes], ids: [...ids] };
+    }
+    
+    #splitUrlSelectors(hide_selectors: string[]): { urlRules: string[]; plainSelectors: string[]; } {
+        const urlRules: string[] = [];
+        const plainSelectors: string[] = [];
+        const urlregex = /\[(?:href|src|srcset|action|poster|data|cite|formaction)[\^*$]?=/
+        for (const sel of hide_selectors) {
+            if (urlregex.test(sel))
+                urlRules.push(sel);
+            else
+                plainSelectors.push(sel);
+        }
+        return { urlRules, plainSelectors };
     }
 
     #dataUrlToResponse(dataUrl: string): Response {

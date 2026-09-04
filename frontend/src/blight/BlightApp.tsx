@@ -35,7 +35,8 @@ function BlightApp() {
         setTabs((prev) => {
             // If I use a counter instead fo crypto, I could use binary search
             const index = prev.findIndex((t) => t.id === id);
-            if (index === -1) return prev;
+            if (index === -1)
+                return prev;
             const next = prev.filter((t) => t.id !== id);
             tabHandles.current.delete(id);
             if (activeId === id) {
@@ -49,6 +50,8 @@ function BlightApp() {
     };
     const activeTab = tabs.find((t) => t.id === activeId);
     const activeHandle = tabHandles.current.get(activeId);
+    // Can be used across multiple frames
+    const httpCache = new $scramjetUtils.HttpCachePlugin();
     return (
         <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh" }}>
             <TabBar
@@ -67,6 +70,7 @@ function BlightApp() {
                         active={tab.id === activeId}
                         announce={(m) => updateTab(tab.id, m)}
                         openNewTab={openTab}
+                        httpCache={httpCache}
                         ref={(handle) => {
                             handle
                                 ? tabHandles.current.set(tab.id, handle)

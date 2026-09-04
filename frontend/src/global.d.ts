@@ -19,3 +19,8 @@ declare module '*.jpg' {
   const content: string;
   export default content;
 }
+
+declare module '*?ts-to-js-str' {
+  const content: string;
+  export default content;
+}

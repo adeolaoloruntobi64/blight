@@ -26,15 +26,14 @@ export function bootBlight(): Promise<BlightContext> {
 }
 
 async function doBoot(): Promise<BlightContext> {
-    const idbtp = new IDBStore("__transport", 1, "items");
-    const idbvg = new IDBStore("__vanguard", 1, "items");
+    const blightidb = new IDBStore("__blight", 1, "items");
     const [worker, transport] = await Promise.all([
         createServiceWorker(),
-        createTransport(idbtp)
+        createTransport(blightidb)
     ]);
     await transport.init();
     const [vgbundle, controller] = await Promise.all([
-        createVanguard(idbvg, transport),
+        createVanguard(blightidb, transport),
         createScramjetController(worker, transport)
     ]);
     await Promise.all([controller.wait(), vgbundle.stats.init()]);

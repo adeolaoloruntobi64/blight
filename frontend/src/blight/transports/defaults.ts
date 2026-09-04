@@ -12,7 +12,8 @@ export const TRANSPORT_DEFAULTS = {
     },
     libcurl: {
         websocket: CONFIG.wsproxyUrl,
-        wasm: CONFIG.epoxyWasm,
+        wasm: CONFIG.libcurlWasm,
+        transport: "wsproxy"
     },
 };
 

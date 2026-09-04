@@ -49,6 +49,7 @@ async fn server() {
         options.num_concurrent_reqs = 1;
         options.cache_size = 1024;
         options.ip_strategy = LookupIpStrategy::Ipv4thenIpv6;
+        // Consider using h3
         let resolver = TokioResolver::builder_with_config(
             ResolverConfig::https(&CLOUDFLARE),
             TokioRuntimeProvider::new()
